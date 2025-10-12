@@ -93,7 +93,7 @@ void FPwin::hlight() const {
     QPoint vpBottomRight(vp->width() - 1, vp->height() - 1);
 
     QTextCursor start = textEdit->cursorForPosition(vpTopLeft);
-    QTextCursor end   = textEdit->cursorForPosition(vpBottomRight);
+    QTextCursor end = textEdit->cursorForPosition(vpBottomRight);
 
     // extend the scan window a little so matches straddling edges are included
     const int ext = (!tabPage->matchRegex() ? txt.length() : 0);
@@ -106,11 +106,13 @@ void FPwin::hlight() const {
     // quick reject if scan window is smaller than the literal search text
     if (tabPage->matchRegex() || (end.position() - start.position()) >= txt.length()) {
         // compute highlight color with opacity tuned for dark and light schemes
-        QColor color = textEdit->hasDarkScheme()
-                         ? QColor(255, 255, 0,
-                                  static_cast<int>(
-                                      static_cast<double>(textEdit->getDarkValue() * (textEdit->getDarkValue() - 257)) / 414) + 90)
-                         : Qt::yellow;
+        QColor color =
+            textEdit->hasDarkScheme()
+                ? QColor(255, 255, 0,
+                         static_cast<int>(
+                             static_cast<double>(textEdit->getDarkValue() * (textEdit->getDarkValue() - 257)) / 414) +
+                             90)
+                : Qt::yellow;
 
         const QTextDocument::FindFlags flags = getSearchFlags();
         const int endLimit = end.position();

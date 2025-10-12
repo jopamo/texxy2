@@ -14,7 +14,8 @@
 
 namespace FeatherPad {
 
-static constexpr const char* kTabDroppedProp = "_fpad_tab_dropped" ; // property set by FPwin::dropEvent when a tab drop is accepted
+static constexpr const char* kTabDroppedProp =
+    "_fpad_tab_dropped";  // property set by FPwin::dropEvent when a tab drop is accepted
 static constexpr const char* kMimeType = "application/featherpad-tab";  // mime type for dragged tab index
 
 const char* TabBar::tabDropped = kTabDroppedProp;
@@ -95,7 +96,8 @@ void TabBar::mouseMoveEvent(QMouseEvent* event) {
                 emit tabDetached();
             else
                 finishMouseMoveEvent();
-        } else {
+        }
+        else {
             // another app may accept the drop, check our property flag and detach if missing
             if (property(TabBar::tabDropped).toBool())
                 setProperty(TabBar::tabDropped, QVariant());  // reset
@@ -108,7 +110,8 @@ void TabBar::mouseMoveEvent(QMouseEvent* event) {
         }
         event->accept();
         drag->deleteLater();
-    } else {
+    }
+    else {
         QTabBar::mouseMoveEvent(event);
         int index = tabAt(event->position().toPoint());
         static int lastTipIndex = -1;  // reduces redundant tooltip updates
@@ -117,7 +120,8 @@ void TabBar::mouseMoveEvent(QMouseEvent* event) {
                 lastTipIndex = index;
                 QToolTip::showText(QCursor::pos(), tabToolTip(index), this);
             }
-        } else {
+        }
+        else {
             if (lastTipIndex != -1) {
                 lastTipIndex = -1;
                 QToolTip::hideText();
@@ -164,17 +168,15 @@ void TabBar::finishMouseMoveEvent() {
     dragStartPosition_ = QPoint();
 
     // synthesize a benign move to flush any hover states
-    QMouseEvent finishingEvent(QEvent::MouseMove, QPointF(),
-                               QCursor::pos(),
-                               Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent finishingEvent(QEvent::MouseMove, QPointF(), QCursor::pos(), Qt::NoButton, Qt::NoButton,
+                               Qt::NoModifier);
     mouseMoveEvent(&finishingEvent);
 }
 /*************************/
 void TabBar::releaseMouse() {
     // synthesize a release before any tab removal to keep visuals in sync
-    QMouseEvent releasingEvent(QEvent::MouseButtonRelease, QPointF(),
-                               QCursor::pos(),
-                               Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent releasingEvent(QEvent::MouseButtonRelease, QPointF(), QCursor::pos(), Qt::LeftButton, Qt::NoButton,
+                               Qt::NoModifier);
     mouseReleaseEvent(&releasingEvent);
 }
 /*************************/

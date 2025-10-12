@@ -244,11 +244,11 @@ SidePane::SidePane(QWidget* parent) : QWidget(parent) {
             tree_->expandToDepth(0);
     });
     connect(tree_, &QTreeView::doubleClicked, this, &SidePane::onTreeActivated);
-connect(tree_, &QTreeView::activated, this, [this](const QModelIndex& idx) {
-    const QModelIndex src = proxy_->mapToSource(idx);
-    if (src.isValid() && fsModel_->isDir(src))
-        tree_->setExpanded(idx, !tree_->isExpanded(idx));  // only toggle directories
-});
+    connect(tree_, &QTreeView::activated, this, [this](const QModelIndex& idx) {
+        const QModelIndex src = proxy_->mapToSource(idx);
+        if (src.isValid() && fsModel_->isDir(src))
+            tree_->setExpanded(idx, !tree_->isExpanded(idx));  // only toggle directories
+    });
     connect(tree_, &QTreeView::customContextMenuRequested, this, &SidePane::onTreeContextMenuRequested);
 
     // keyboard: Enter opens all selected
@@ -406,8 +406,9 @@ void SidePane::onTreeActivated(const QModelIndex& proxyIndex) {
     if (fsModel_->isDir(src)) {
         // (doubleClicked on a dir will still toggle here; harmless)
         tree_->setExpanded(proxyIndex, !tree_->isExpanded(proxyIndex));
-    } else {
-        emit openFileRequested(fsModel_->filePath(src));   // opens exactly once now
+    }
+    else {
+        emit openFileRequested(fsModel_->filePath(src));  // opens exactly once now
     }
 }
 
