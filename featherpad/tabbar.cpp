@@ -14,8 +14,8 @@
 
 namespace FeatherPad {
 
-static constexpr const char* kTabDroppedProp = "_fpad_tab_dropped"  // property set by FPwin::dropEvent when a tab drop is accepted
-static constexpr const char* kMimeType = "application/featherpad-tab"  // mime type for dragged tab index
+static constexpr const char* kTabDroppedProp = "_fpad_tab_dropped" ; // property set by FPwin::dropEvent when a tab drop is accepted
+static constexpr const char* kMimeType = "application/featherpad-tab";  // mime type for dragged tab index
 
 const char* TabBar::tabDropped = kTabDroppedProp;
 
@@ -26,7 +26,7 @@ TabBar::TabBar(QWidget* parent) : QTabBar(parent) {
     noTabDND_ = false;
 
     setMouseTracking(true);
-    setElideMode(Qt::ElideMiddle)  // works with minimumTabSizeHint
+    setElideMode(Qt::ElideMiddle);  // works with minimumTabSizeHint
 }
 /*************************/
 void TabBar::mousePressEvent(QMouseEvent* event) {
