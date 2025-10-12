@@ -383,7 +383,15 @@ void FPwin::toggleSidePane() {
         sidePane_ = new SidePane();
         ui->splitter->insertWidget(0, sidePane_);
         sidePane_->listWidget()->setFocus();
-        ui->splitter->setStretchFactor(1, 1);  // only the text view can be stretched
+        ui->splitter->setStretchFactor(1, 1);  // only the text view can be
+
+        connect(sidePane_, &SidePane::openFileRequested, this, [this](const QString& path) {
+            const bool multiple = true;  // same behavior as opening several at once
+            newTabFromName(path, /*line*/ 0, /*col*/ 0, multiple);
+        });
+
+        sidePane_->listWidget()->setFocus();
+
         QList<int> sizes;
         if (config.getRemSplitterPos()) {
             /* make sure that the side pane is visible and
