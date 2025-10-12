@@ -378,8 +378,6 @@ void FPwin::cleanUpOnTerminating(Config& config, bool isLastWin) {
 void FPwin::toggleSidePane() {
     Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
     if (sidePane_ == nullptr) {
-        ui->tabWidget->tabBar()->hide();
-        ui->tabWidget->tabBar()->hideSingle(false);  // prevent tabs from reappearing
         sidePane_ = new SidePane();
         ui->splitter->insertWidget(0, sidePane_);
         sidePane_->listWidget()->setFocus();
