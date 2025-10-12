@@ -11,14 +11,6 @@ find_package(HUNSPELL "${HUNSPELL_MINIMUM_VERSION}" REQUIRED)
 # optional localization
 find_package(Qt6 QUIET COMPONENTS LinguistTools)
 
-if(HAIKU)
-  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -lnetwork")
-elseif(OS2)
-  # OS/2 needs an additional lib and tune the processor
-  add_definitions(-mtune=pentium4 -march=pentium4)
-  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -lcx")
-endif()
-
 # X11 for Linux/Unix
 if(NOT WITHOUT_X11 AND UNIX AND NOT APPLE AND NOT HAIKU)
   find_package(X11 REQUIRED)
@@ -51,11 +43,7 @@ else()
                       ${HUNSPELL_INCLUDE_DIRS})
 endif()
 
-if(HAIKU)
-  add_definitions(-DDATADIR="${CMAKE_INSTALL_PREFIX}/data")
-elseif(UNIX OR OS2)
-  add_definitions(-DDATADIR="${CMAKE_INSTALL_PREFIX}/share")
-endif()
+add_definitions(-DDATADIR="${CMAKE_INSTALL_PREFIX}/share")
 
 set(featherpad_SRCS
     main.cpp
@@ -122,13 +110,7 @@ qt6_add_dbus_adaptor(featherpad_DBUS_SRCS
 set(featherpad_RESOURCES data/fp.qrc)
 set(DESKTOP_FILE data/featherpad.desktop)
 set(METAINFO_FILE data/featherpad.metainfo.xml)
-if(NOT OS2)
-  set(ICON_FILE data/featherpad.svg)
-else()
-  enable_language(RC)
-  set_source_files_properties(data/featherpad_os2.rc PROPERTIES LANGUAGE RC)
-  set(featherpad_SRCS ${featherpad_SRCS} data/featherpad_os2.rc)
-endif()
+set(ICON_FILE data/featherpad.svg)
 set(HELP_FILE data/help)
 # file(GLOB HELP_TR_FILES data/help_*)
 
@@ -143,7 +125,7 @@ if(Qt6LinguistTools_FOUND)
     install(FILES ${QM_FILES} DESTINATION "${CMAKE_INSTALL_PREFIX}/translations")
   elseif(APPLE)
     SET_SOURCE_FILES_PROPERTIES(${QM_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/translations)
-  elseif(UNIX OR OS2)
+  elseif(UNIX)
     install(FILES ${QM_FILES} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/featherpad/translations")
   endif()
 else(Qt6LinguistTools_FOUND)
@@ -169,37 +151,12 @@ else()
                                    ${HUNSPELL_LIBRARIES})
 endif()
 
-# installation
-if(HAIKU)
-  install(TARGETS featherpad RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX})
-  install(FILES ${HELP_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/data")
-  # install(FILES ${HELP_TR_FILES} DESTINATION "${CMAKE_INSTALL_PREFIX}/data")
-elseif(APPLE)
-  SET_TARGET_PROPERTIES(featherpad PROPERTIES RESOURCE ${HELP_FILE})
-  # SET_TARGET_PROPERTIES(featherpad PROPERTIES RESOURCE ${HELP_TR_FILES})
-  SET_SOURCE_FILES_PROPERTIES(FILES ${HELP_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/help)
-  # SET_SOURCE_FILES_PROPERTIES(FILES ${HELP_TR_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/helps)
-  SET_TARGET_PROPERTIES(featherpad PROPERTIES MACOSX_BUNDLE TRUE)
-  INSTALL(TARGETS featherpad DESTINATION ${CMAKE_INSTALL_PREFIX})
-elseif(UNIX)
-  # make symlink
-  add_custom_target(fpad_symlink ALL ${CMAKE_COMMAND} -E create_symlink featherpad fpad DEPENDS featherpad COMMENT "Creating fpad as a symlink to featherpad")
+# make symlink
+add_custom_target(fpad_symlink ALL ${CMAKE_COMMAND} -E create_symlink featherpad fpad DEPENDS featherpad COMMENT "Creating fpad as a symlink to featherpad")
 
-  install(TARGETS featherpad RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-  install(FILES ${DESKTOP_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications")
-  install(FILES ${METAINFO_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/metainfo")
-  install(FILES ${ICON_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/scalable/apps")
-  install(FILES ${HELP_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/featherpad")
-  # also install translated help files
-  # install(FILES ${HELP_TR_FILES} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/featherpad")
-  # install symlink
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fpad DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-elseif(OS2)
-  SET_TARGET_PROPERTIES(featherpad PROPERTIES
-  	OS2_DEF_EXEType "WINDOWAPI"
-  )
-  install(TARGETS featherpad RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-  install(FILES ${HELP_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/featherpad")
-  # also install translated help files
-  # install(FILES ${HELP_TR_FILES} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/featherpad")
-endif()
+install(TARGETS featherpad RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+install(FILES ${DESKTOP_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications")
+install(FILES ${METAINFO_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/metainfo")
+install(FILES ${ICON_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/scalable/apps")
+install(FILES ${HELP_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/featherpad")
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fpad DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
