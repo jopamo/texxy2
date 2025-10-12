@@ -47,7 +47,7 @@ static inline ScanResult scanBuffer(const uchar* begin, const uchar* end, bool e
 
     if (!enforced) {
         if (peeks == 2 && ((C[0] != 0x00 && C[1] == 0x00) || (C[0] == 0x00 && C[1] != 0x00)))
-            r.likelyUtf16 = true; // single 2-byte char with alternating NUL suggests UTF-16
+            r.likelyUtf16 = true;  // single 2-byte char with alternating NUL suggests UTF-16
 
         if (peeks == 4) {
             const bool bom16le = (C[0] == 0xFF && C[1] == 0xFE);
@@ -76,7 +76,7 @@ static inline ScanResult scanBuffer(const uchar* begin, const uchar* end, bool e
     // compute huge-line cutoff in a single walk without building a copy
     // thresholds match original logic
     const int thresholdText = 500000;
-    const int thresholdWide = 500004; // multiple of 4
+    const int thresholdWide = 500004;  // multiple of 4
     int lineLen = 0;
     const int threshold = (enforced || r.likelyUtf16 || r.likelyUtf32) ? thresholdWide : thresholdText;
 
@@ -89,7 +89,7 @@ static inline ScanResult scanBuffer(const uchar* begin, const uchar* end, bool e
         if (c == '\n' || c == '\r')
             lineLen = 0;
         if (lineLen > threshold && r.cutoff < 0)
-            r.cutoff = i; // cutoff occurs right before this byte
+            r.cutoff = i;  // cutoff occurs right before this byte
     }
 
     // continue scanning from after the peek
@@ -103,7 +103,7 @@ static inline ScanResult scanBuffer(const uchar* begin, const uchar* end, bool e
         if (lineLen > threshold && r.cutoff < 0) {
             // cutoff index is number of bytes to keep from start
             r.cutoff = p - begin - (enforced || r.likelyUtf16 || r.likelyUtf32 ? ((lineLen - threshold) % 4) : 0);
-            break; // first cutoff position is enough
+            break;  // first cutoff position is enough
         }
     }
 
@@ -130,12 +130,13 @@ Loading::~Loading() {}
 
 void Loading::run() {
     if (!QFile::exists(fname_)) {
-        emit completed(QString(), fname_, charset_.isEmpty() ? "UTF-8" : charset_, false, false, 0, 0, false, multiple_);
+        emit completed(QString(), fname_, charset_.isEmpty() ? "UTF-8" : charset_, false, false, 0, 0, false,
+                       multiple_);
         return;
     }
 
     QFile file(fname_);
-    const qint64 sizeLimit = 100LL * 1024 * 1024; // 100 MiB guard
+    const qint64 sizeLimit = 100LL * 1024 * 1024;  // 100 MiB guard
     if (file.size() > sizeLimit) {
         emit completed(QString(), fname_);
         return;
@@ -176,35 +177,38 @@ void Loading::run() {
             // treat as non-text but still open as UTF-8 like original
             forceUneditable_ = true;
             charset_ = "UTF-8";
-        } else if (scan.likelyUtf16) {
+        }
+        else if (scan.likelyUtf16) {
             charset_ = "UTF-16";
-        } else if (scan.likelyUtf32) {
+        }
+        else if (scan.likelyUtf32) {
             charset_ = "UTF-32";
-        } else {
+        }
+        else {
             // zero-copy view into mapped data for detection to avoid copying the whole file
-            const QByteArray raw = QByteArray::fromRawData(reinterpret_cast<const char*>(begin), static_cast<int>(end - begin));
+            const QByteArray raw =
+                QByteArray::fromRawData(reinterpret_cast<const char*>(begin), static_cast<int>(end - begin));
             charset_ = detectCharset(raw);
         }
     }
 
     // choose decoder once
-    const auto conv =
-        charset_ == "UTF-8"  ? QStringConverter::Utf8  :
-        charset_ == "UTF-16" ? QStringConverter::Utf16 :
-        charset_ == "UTF-32" ? QStringConverter::Utf32 :
-                               QStringConverter::Latin1;
+    const auto conv = charset_ == "UTF-8"    ? QStringConverter::Utf8
+                      : charset_ == "UTF-16" ? QStringConverter::Utf16
+                      : charset_ == "UTF-32" ? QStringConverter::Utf32
+                                             : QStringConverter::Latin1;
 
     QStringDecoder decoder(conv);
 
     // stream decode directly from mapped memory to avoid building a second full-size buffer
     // if we need to truncate a huge line, decode only up to cutoff and then append the notice
     QString text;
-    text.reserve(static_cast<int>(qMin<qint64>(fsz, 1'500'000))); // rough reservation to reduce reallocs
+    text.reserve(static_cast<int>(qMin<qint64>(fsz, 1'500'000)));  // rough reservation to reduce reallocs
 
     const qint64 keepLen = scan.cutoff >= 0 ? scan.cutoff : (end - begin);
     if (keepLen > 0) {
         // decode in large chunks to be friendly to allocator for very large files
-        constexpr qint64 CHUNK = 1 << 20; // 1 MiB chunks
+        constexpr qint64 CHUNK = 1 << 20;  // 1 MiB chunks
         qint64 processed = 0;
         while (processed < keepLen) {
             const qint64 n = qMin(CHUNK, keepLen - processed);
@@ -215,7 +219,7 @@ void Loading::run() {
     }
 
     // finalize the decoder state
-    text += decoder.decode({}); // flush any pending partial sequence
+    text += decoder.decode({});  // flush any pending partial sequence
 
     if (scan.cutoff >= 0) {
         appendHugeLineNotice(text);
@@ -227,4 +231,4 @@ void Loading::run() {
     emit completed(text, fname_, charset_, enforced, reload_, restoreCursor_, posInLine_, forceUneditable_, multiple_);
 }
 
-} // namespace FeatherPad
+}  // namespace FeatherPad

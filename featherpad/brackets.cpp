@@ -37,7 +37,8 @@ static inline bool matchForwardGeneric(QTextBlock block,
                 if (depth == 0) {
                     onMatch(docPos + info->position);
                     return true;
-                } else {
+                }
+                else {
                     --depth;
                 }
             }
@@ -78,7 +79,8 @@ static inline bool matchBackwardGeneric(QTextBlock block,
                 if (depth == 0) {
                     onMatch(docPos + info->position);
                     return true;
-                } else {
+                }
+                else {
                     --depth;
                 }
             }
@@ -115,8 +117,8 @@ void FPwin::matchBrackets() {
 
     QTextDocument* doc = textEdit->document();
     const int curPos = cur.position();
-    const int blockPos = cur.block().position();      // position of block's first character
-    const int curBlockPos = curPos - blockPos;        // position of cursor in block
+    const int blockPos = cur.block().position();  // position of block's first character
+    const int curBlockPos = curPos - blockPos;    // position of cursor in block
 
     const QChar chHere = doc->characterAt(curPos);
     const QChar chPrev = (curPos > 0) ? doc->characterAt(curPos - 1) : QChar(QChar::Null);
@@ -136,7 +138,8 @@ void FPwin::matchBrackets() {
                 if (info->position == curBlockPos && info->character == '(') {
                     if (matchLeftParenthesis(cur.block(), i + 1, 0)) {
                         onMatch(blockPos + info->position);
-                        if (!isAtRight) break;
+                        if (!isAtRight)
+                            break;
                         isAtLeft = false;
                     }
                 }
@@ -148,7 +151,8 @@ void FPwin::matchBrackets() {
                 if (info->position == curBlockPos - 1 && info->character == ')') {
                     if (matchRightParenthesis(cur.block(), infos.size() - i, 0)) {
                         onMatch(blockPos + info->position);
-                        if (!isAtLeft) break;
+                        if (!isAtLeft)
+                            break;
                         isAtRight = false;
                     }
                 }
@@ -171,7 +175,8 @@ void FPwin::matchBrackets() {
                 if (info->position == curBlockPos && info->character == '{') {
                     if (matchLeftBrace(cur.block(), i + 1, 0)) {
                         onMatch(blockPos + info->position);
-                        if (!isAtRight) break;
+                        if (!isAtRight)
+                            break;
                         isAtLeft = false;
                     }
                 }
@@ -183,7 +188,8 @@ void FPwin::matchBrackets() {
                 if (info->position == curBlockPos - 1 && info->character == '}') {
                     if (matchRightBrace(cur.block(), infos.size() - i, 0)) {
                         onMatch(blockPos + info->position);
-                        if (!isAtLeft) break;
+                        if (!isAtLeft)
+                            break;
                         isAtRight = false;
                     }
                 }
@@ -205,7 +211,8 @@ void FPwin::matchBrackets() {
                 if (info->position == curBlockPos && info->character == '[') {
                     if (matchLeftBracket(cur.block(), i + 1, 0)) {
                         onMatch(blockPos + info->position);
-                        if (!isAtRight) break;
+                        if (!isAtRight)
+                            break;
                         isAtLeft = false;
                     }
                 }
@@ -217,7 +224,8 @@ void FPwin::matchBrackets() {
                 if (info->position == curBlockPos - 1 && info->character == ']') {
                     if (matchRightBracket(cur.block(), infos.size() - i, 0)) {
                         onMatch(blockPos + info->position);
-                        if (!isAtLeft) break;
+                        if (!isAtLeft)
+                            break;
                         isAtRight = false;
                     }
                 }
@@ -233,43 +241,37 @@ void FPwin::matchBrackets() {
 
 bool FPwin::matchLeftParenthesis(QTextBlock currentBlock, int i, int numLeftParentheses) {
     return matchForwardGeneric<ParenthesisInfo>(
-        currentBlock, i, numLeftParentheses, '(', ')',
-        [](TextBlockData* d) { return d->parentheses(); },
+        currentBlock, i, numLeftParentheses, '(', ')', [](TextBlockData* d) { return d->parentheses(); },
         [this](int pos) { createSelection(pos); });
 }
 
 bool FPwin::matchRightParenthesis(QTextBlock currentBlock, int i, int numRightParentheses) {
     return matchBackwardGeneric<ParenthesisInfo>(
-        currentBlock, i, numRightParentheses, '(', ')',
-        [](TextBlockData* d) { return d->parentheses(); },
+        currentBlock, i, numRightParentheses, '(', ')', [](TextBlockData* d) { return d->parentheses(); },
         [this](int pos) { createSelection(pos); });
 }
 
 bool FPwin::matchLeftBrace(QTextBlock currentBlock, int i, int numRightBraces) {
     return matchForwardGeneric<BraceInfo>(
-        currentBlock, i, numRightBraces, '{', '}',
-        [](TextBlockData* d) { return d->braces(); },
+        currentBlock, i, numRightBraces, '{', '}', [](TextBlockData* d) { return d->braces(); },
         [this](int pos) { createSelection(pos); });
 }
 
 bool FPwin::matchRightBrace(QTextBlock currentBlock, int i, int numLeftBraces) {
     return matchBackwardGeneric<BraceInfo>(
-        currentBlock, i, numLeftBraces, '{', '}',
-        [](TextBlockData* d) { return d->braces(); },
+        currentBlock, i, numLeftBraces, '{', '}', [](TextBlockData* d) { return d->braces(); },
         [this](int pos) { createSelection(pos); });
 }
 
 bool FPwin::matchLeftBracket(QTextBlock currentBlock, int i, int numRightBrackets) {
     return matchForwardGeneric<BracketInfo>(
-        currentBlock, i, numRightBrackets, '[', ']',
-        [](TextBlockData* d) { return d->brackets(); },
+        currentBlock, i, numRightBrackets, '[', ']', [](TextBlockData* d) { return d->brackets(); },
         [this](int pos) { createSelection(pos); });
 }
 
 bool FPwin::matchRightBracket(QTextBlock currentBlock, int i, int numLeftBrackets) {
     return matchBackwardGeneric<BracketInfo>(
-        currentBlock, i, numLeftBrackets, '[', ']',
-        [](TextBlockData* d) { return d->brackets(); },
+        currentBlock, i, numLeftBrackets, '[', ']', [](TextBlockData* d) { return d->brackets(); },
         [this](int pos) { createSelection(pos); });
 }
 
@@ -298,4 +300,4 @@ void FPwin::createSelection(int pos) {
     textEdit->setExtraSelections(es);
 }
 
-} // namespace FeatherPad
+}  // namespace FeatherPad

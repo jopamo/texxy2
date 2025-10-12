@@ -125,41 +125,86 @@ static const ExtMaps& extMaps() {
     static const ExtMaps maps = [] {
         ExtMaps m;
 
-        struct Entry { const char* ext; bool caseSensitive; const char* lang; };
+        struct Entry {
+            const char* ext;
+            bool caseSensitive;
+            const char* lang;
+        };
         static const Entry entries[] = {
-            {".cpp", true, "cpp"}, {".cxx", true, "cpp"}, {".h", true, "cpp"}, {".c", true, "c"},
-            {".sh", true, "sh"}, {".ebuild", true, "sh"}, {".eclass", true, "sh"}, {".zsh", true, "sh"},
-            {".rb", true, "ruby"}, {".lua", true, "lua"}, {".nelua", true, "lua"}, {".py", true, "python"},
-            {".pl", true, "perl"}, {".pro", true, "qmake"}, {".pri", true, "qmake"},
-            {".tr", true, "troff"}, {".t", true, "troff"}, {".roff", true, "troff"},
-            {".tex", true, "LaTeX"}, {".ltx", true, "LaTeX"}, {".latex", true, "LaTeX"}, {".lyx", true, "LaTeX"},
-            {".xml", false, "xml"}, {".svg", false, "xml"}, {".qrc", true, "xml"}, {".rdf", true, "xml"},
-            {".docbook", true, "xml"}, {".fnx", true, "xml"}, {".ts", true, "xml"}, {".menu", true, "xml"},
-            {".kml", false, "xml"}, {".xspf", false, "xml"}, {".asx", false, "xml"}, {".nfo", true, "xml"},
+            {".cpp", true, "cpp"},
+            {".cxx", true, "cpp"},
+            {".h", true, "cpp"},
+            {".c", true, "c"},
+            {".sh", true, "sh"},
+            {".ebuild", true, "sh"},
+            {".eclass", true, "sh"},
+            {".zsh", true, "sh"},
+            {".rb", true, "ruby"},
+            {".lua", true, "lua"},
+            {".nelua", true, "lua"},
+            {".py", true, "python"},
+            {".pl", true, "perl"},
+            {".pro", true, "qmake"},
+            {".pri", true, "qmake"},
+            {".tr", true, "troff"},
+            {".t", true, "troff"},
+            {".roff", true, "troff"},
+            {".tex", true, "LaTeX"},
+            {".ltx", true, "LaTeX"},
+            {".latex", true, "LaTeX"},
+            {".lyx", true, "LaTeX"},
+            {".xml", false, "xml"},
+            {".svg", false, "xml"},
+            {".qrc", true, "xml"},
+            {".rdf", true, "xml"},
+            {".docbook", true, "xml"},
+            {".fnx", true, "xml"},
+            {".ts", true, "xml"},
+            {".menu", true, "xml"},
+            {".kml", false, "xml"},
+            {".xspf", false, "xml"},
+            {".asx", false, "xml"},
+            {".nfo", true, "xml"},
             {".dae", true, "xml"},
-            {".css", true, "css"}, {".qss", true, "css"}, {".scss", true, "scss"},
-            {".p", true, "pascal"}, {".pas", true, "pascal"},
-            {".desktop", true, "desktop"}, {".desktop.in", true, "desktop"}, {".directory", true, "desktop"},
-            {".kvconfig", true, "config"}, {".service", true, "config"}, {".mount", true, "config"},
-            {".timer", true, "config"}, {".pls", false, "config"},
-            {".js", true, "javascript"}, {".hx", true, "javascript"},
-            {".java", true, "java"}, {".json", true, "json"},
+            {".css", true, "css"},
+            {".qss", true, "css"},
+            {".scss", true, "scss"},
+            {".p", true, "pascal"},
+            {".pas", true, "pascal"},
+            {".desktop", true, "desktop"},
+            {".desktop.in", true, "desktop"},
+            {".directory", true, "desktop"},
+            {".kvconfig", true, "config"},
+            {".service", true, "config"},
+            {".mount", true, "config"},
+            {".timer", true, "config"},
+            {".pls", false, "config"},
+            {".js", true, "javascript"},
+            {".hx", true, "javascript"},
+            {".java", true, "java"},
+            {".json", true, "json"},
             {".qml", true, "qml"},
             {".log", false, "log"},
             {".php", true, "php"},
-            {".diff", true, "diff"}, {".patch", true, "diff"},
+            {".diff", true, "diff"},
+            {".patch", true, "diff"},
             {".srt", true, "srt"},
             {".theme", true, "theme"},
             {".fountain", true, "fountain"},
-            {".yml", true, "yaml"}, {".yaml", true, "yaml"},
+            {".yml", true, "yaml"},
+            {".yaml", true, "yaml"},
             {".m3u", false, "m3u"},
-            {".htm", false, "html"}, {".html", false, "html"},
-            {".markdown", true, "markdown"}, {".md", true, "markdown"}, {".mkd", true, "markdown"},
+            {".htm", false, "html"},
+            {".html", false, "html"},
+            {".markdown", true, "markdown"},
+            {".md", true, "markdown"},
+            {".mkd", true, "markdown"},
             {".rst", true, "reST"},
             {".dart", true, "dart"},
             {".go", true, "go"},
             {".rs", true, "rust"},
-            {".tcl", true, "tcl"}, {".tk", true, "tcl"},
+            {".tcl", true, "tcl"},
+            {".tk", true, "tcl"},
             {".toml", true, "toml"},
         };
 
@@ -203,7 +248,7 @@ static QString languageForExtension(QStringView fullPath) {
     // walk all dot positions from left to right to handle multi-part like .desktop.in
     int pos = base.indexOf('.');
     while (pos >= 0) {
-        const QStringView suff = base.sliced(pos); // includes the leading dot
+        const QStringView suff = base.sliced(pos);  // includes the leading dot
         // try exact case-sensitive
         if (const auto it = maps.exactMap.constFind(suff.toString()); it != maps.exactMap.constEnd())
             return it.value();
@@ -284,7 +329,8 @@ void FPwin::setProgLang(TextEdit* textEdit) {
             lang = QStringLiteral("python");
         else
             lang = languageForMime(mimeType);
-    } else {
+    }
+    else {
         lang = QStringLiteral("url");
     }
 
@@ -304,7 +350,7 @@ void FPwin::toggleSyntaxHighlighting() {
 
     const bool enableSH = ui->actionSyntax->isChecked();
     if (enableSH)
-        makeBusy(); // may take a while with huge texts
+        makeBusy();  // may take a while with huge texts
 
     for (int i = 0; i < count; ++i) {
         if (auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->widget(i))) {
@@ -340,8 +386,8 @@ void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString
             QTimer::singleShot(100, textEdit, [=]() {
                 if (auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
                     if (tabPage->textEdit() == textEdit) {
-                        showWarningBar(
-                            tr("<center><b><big>The size limit for syntax highlighting is exceeded</big></b></center>"));
+                        showWarningBar(tr(
+                            "<center><b><big>The size limit for syntax highlighting is exceeded</big></b></center>"));
                     }
                 }
             });
@@ -378,7 +424,8 @@ void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString
             connect(textEdit, &TextEdit::resized, this, &FPwin::formatTextRect);
             connect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::formatOnTextChange);
         });
-    } else {
+    }
+    else {
         if (auto* highlighter = qobject_cast<Highlighter*>(textEdit->getHighlighter())) {
             disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::formatOnTextChange);
             disconnect(textEdit, &TextEdit::resized, this, &FPwin::formatTextRect);

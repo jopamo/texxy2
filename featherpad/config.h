@@ -18,7 +18,7 @@ namespace FeatherPad {
 // prevent redundant writes when a value hasn't changed
 class Settings : public QSettings {
     Q_OBJECT
-public:
+   public:
     Settings(const QString& organization, const QString& application = QString(), QObject* parent = nullptr)
         : QSettings(organization, application, parent) {}
     Settings(const QString& fileName, QSettings::Format format, QObject* parent = nullptr)
@@ -32,7 +32,7 @@ public:
 };
 
 class Config {
-public:
+   public:
     Config();
     ~Config();
 
@@ -292,11 +292,11 @@ public:
 
     void readSyntaxColors();
 
-private:
+   private:
     QString validatedShortcut(const QVariant v, bool* isValid);
     void readCursorPos();
     void writeCursorPos();
-    void setDefaultSyntaxColors(); // fixed name to match implementation
+    void setDefaultSyntaxColors();  // fixed name to match implementation
     void writeSyntaxColors();
 
     bool remSize_, remPos_, remSplitterPos_, noToolbar_, noMenubar_, menubarTitle_, hideSearchbar_, showStatusbar_,

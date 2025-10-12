@@ -23,7 +23,7 @@
 namespace FeatherPad {
 
 static constexpr const char* serviceName = "org.featherpad.FeatherPad";
-static constexpr const char* ifaceName   = "org.featherpad.Application";
+static constexpr const char* ifaceName = "org.featherpad.Application";
 
 FPsingleton::FPsingleton(int& argc, char** argv) : QApplication(argc, argv) {
 #ifdef HAS_X11
@@ -32,7 +32,7 @@ FPsingleton::FPsingleton(int& argc, char** argv) : QApplication(argc, argv) {
 #else
     isX11_ = false;
 #endif
-    isWayland_ = false; // explicitly do not support Wayland
+    isWayland_ = false;  // explicitly do not support Wayland
 
     isPrimaryInstance_ = true;
     standalone_ = false;
@@ -61,7 +61,8 @@ void FPsingleton::init(bool standalone) {
         if (!dbus.isConnected()) {
             isPrimaryInstance_ = true;
             standalone_ = true;
-        } else if (dbus.registerService(QLatin1String(serviceName))) {
+        }
+        else if (dbus.registerService(QLatin1String(serviceName))) {
             isPrimaryInstance_ = true;
             new FeatherPadAdaptor(this);
             dbus.registerObject(QStringLiteral("/Application"), this);
@@ -87,20 +88,15 @@ void FPsingleton::quitSignalReceived() {
 
 void FPsingleton::sendInfo(const QStringList& info) {
     QDBusConnection dbus = QDBusConnection::sessionBus();
-    QDBusInterface iface(QLatin1String(serviceName),
-                         QStringLiteral("/Application"),
-                         QLatin1String(ifaceName),
-                         dbus,
+    QDBusInterface iface(QLatin1String(serviceName), QStringLiteral("/Application"), QLatin1String(ifaceName), dbus,
                          this);
     iface.call(QStringLiteral("handleInfo"), info);
 }
 
 // called only in standalone mode
 void FPsingleton::sendRecentFile(const QString& file, bool recentOpened) {
-    QDBusMessage methodCall = QDBusMessage::createMethodCall(QLatin1String(serviceName),
-                                                             QStringLiteral("/Application"),
-                                                             QString(),
-                                                             QStringLiteral("addRecentFile"));
+    QDBusMessage methodCall = QDBusMessage::createMethodCall(QLatin1String(serviceName), QStringLiteral("/Application"),
+                                                             QString(), QStringLiteral("addRecentFile"));
     methodCall.setAutoStartService(false);
     methodCall.setArguments(QList<QVariant>{file, recentOpened});
     QDBusConnection::sessionBus().call(methodCall, QDBus::NoBlock, 1000);
@@ -110,21 +106,23 @@ bool FPsingleton::cursorInfo(const QString& commndOpt, int& lineNum, int& posInL
     if (commndOpt.isEmpty())
         return false;
 
-    lineNum = 0;   // no cursor placing
+    lineNum = 0;  // no cursor placing
     posInLine = 0;
 
     if (commndOpt == QStringLiteral("+")) {
         lineNum = -2;  // means the end (-> FPwin::newTabFromName)
         posInLine = 0;
         return true;
-    } else if (commndOpt.startsWith(QLatin1Char('+'))) {
+    }
+    else if (commndOpt.startsWith(QLatin1Char('+'))) {
         bool ok = false;
         lineNum = commndOpt.toInt(&ok);  // "+" is included
         if (ok) {
-            if (lineNum > 0)            // otherwise, the cursor will be ignored (-> FPwin::newTabFromName)
-                lineNum += 1;           // 1 is reserved for session files (-> FPwin::newTabFromName)
+            if (lineNum > 0)   // otherwise, the cursor will be ignored (-> FPwin::newTabFromName)
+                lineNum += 1;  // 1 is reserved for session files (-> FPwin::newTabFromName)
             return true;
-        } else {
+        }
+        else {
             const QStringList l = commndOpt.split(QLatin1Char(','));
             if (l.count() == 2) {
                 lineNum = l.at(0).toInt(&ok);
@@ -183,7 +181,8 @@ QStringList FPsingleton::processInfo(const QStringList& info,
                 sl.removeFirst();
             }
         }
-    } else if (sl.at(0) == QLatin1String("--win") || sl.at(0) == QLatin1String("-w")) {
+    }
+    else if (sl.at(0) == QLatin1String("--win") || sl.at(0) == QLatin1String("-w")) {
         *newWindow = true;
         sl.removeFirst();
         if (!sl.isEmpty())
@@ -255,7 +254,8 @@ FPwin* FPsingleton::newWin(const QStringList& filesList, int lineNum, int posInL
         const bool multiple = (filesList.count() > 1 || fp->isLoading());
         for (int i = 0; i < filesList.count(); ++i)
             fp->newTabFromName(filesList.at(i), lineNum, posInLine, multiple);
-    } else if (!lastFiles_.isEmpty()) {
+    }
+    else if (!lastFiles_.isEmpty()) {
         const bool multiple = (lastFiles_.count() > 1 || fp->isLoading());
         for (int i = 0; i < lastFiles_.count(); ++i)
             fp->newTabFromName(lastFiles_.at(i), -1, 0, multiple);  // restore cursor positions too
@@ -297,7 +297,8 @@ void FPsingleton::handleInfo(const QStringList& info) {
             if (isX11_)
                 whichDesktop = onWhichDesktop(id);
 #endif
-            // if the command is issued from where a FeatherPad window exists and window isn't minimized with a modal dialog
+            // if the command is issued from where a FeatherPad window exists and window isn't minimized with a modal
+            // dialog
             if (!isX11_
 #ifdef HAS_X11
                 || (whichDesktop == d || whichDesktop == -1)

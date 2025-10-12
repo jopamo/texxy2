@@ -51,7 +51,8 @@ SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::Sess
         }
         ui->listWidget->setCurrentRow(0);
         QTimer::singleShot(0, ui->listWidget, QOverload<>::of(&QWidget::setFocus));
-    } else {
+    }
+    else {
         onEmptinessChanged(true);
         QTimer::singleShot(0, ui->lineEdit, QOverload<>::of(&QWidget::setFocus));
     }
@@ -64,22 +65,23 @@ SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::Sess
     connect(ui->listWidget, &QWidget::customContextMenuRequested, this, &SessionDialog::showContextMenu);
     connect(ui->listWidget->itemDelegate(), &QAbstractItemDelegate::commitData, this, &SessionDialog::OnCommittingName);
 
-    connect(ui->saveBtn,  &QAbstractButton::clicked, this, &SessionDialog::saveSession);
+    connect(ui->saveBtn, &QAbstractButton::clicked, this, &SessionDialog::saveSession);
     connect(ui->lineEdit, &QLineEdit::returnPressed, this, &SessionDialog::saveSession);
     connect(ui->lineEdit, &LineEdit::receivedFocus, [=] { ui->openBtn->setDefault(false); });
-    connect(ui->lineEdit, &QLineEdit::textEdited,   [=](const QString& text) { ui->saveBtn->setEnabled(!text.isEmpty()); });
+    connect(ui->lineEdit, &QLineEdit::textEdited,
+            [=](const QString& text) { ui->saveBtn->setEnabled(!text.isEmpty()); });
 
-    connect(ui->openBtn,     &QAbstractButton::clicked, this, &SessionDialog::openSessions);
-    connect(ui->actionOpen,  &QAction::triggered,       this, &SessionDialog::openSessions);
+    connect(ui->openBtn, &QAbstractButton::clicked, this, &SessionDialog::openSessions);
+    connect(ui->actionOpen, &QAction::triggered, this, &SessionDialog::openSessions);
 
-    connect(ui->clearBtn,    &QAbstractButton::clicked, [=] { showPrompt(CLEAR); });
-    connect(ui->removeBtn,   &QAbstractButton::clicked, [=] { showPrompt(REMOVE); });
-    connect(ui->actionRemove,&QAction::triggered,       [=] { showPrompt(REMOVE); });
+    connect(ui->clearBtn, &QAbstractButton::clicked, [=] { showPrompt(CLEAR); });
+    connect(ui->removeBtn, &QAbstractButton::clicked, [=] { showPrompt(REMOVE); });
+    connect(ui->actionRemove, &QAction::triggered, [=] { showPrompt(REMOVE); });
 
-    connect(ui->actionRename,&QAction::triggered, this, &SessionDialog::renameSession);
+    connect(ui->actionRename, &QAction::triggered, this, &SessionDialog::renameSession);
 
-    connect(ui->cancelBtn,   &QAbstractButton::clicked, this, &SessionDialog::closePrompt);
-    connect(ui->confirmBtn,  &QAbstractButton::clicked, this, &SessionDialog::closePrompt);
+    connect(ui->cancelBtn, &QAbstractButton::clicked, this, &SessionDialog::closePrompt);
+    connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::closePrompt);
 
     connect(ui->closeButton, &QAbstractButton::clicked, this, &QDialog::close);
 
@@ -121,7 +123,7 @@ void SessionDialog::showContextMenu(const QPoint& p) {
 
     ui->listWidget->selectionModel()->select(index, QItemSelectionModel::ClearAndSelect);
 
-    QMenu menu(this); // keep parent for Wayland focus cases
+    QMenu menu(this);  // keep parent for Wayland focus cases
     menu.addAction(ui->actionOpen);
     menu.addAction(ui->actionRemove);
     menu.addSeparator();
@@ -149,7 +151,8 @@ void SessionDialog::saveSession() {
     if (ui->windowBox->isChecked()) {
         if (auto* win = static_cast<FPwin*>(parent_))
             hasFile = hasAnyFileInWin(win);
-    } else {
+    }
+    else {
         auto* singleton = static_cast<FPsingleton*>(qApp);
         for (int i = 0; i < singleton->Wins.count() && !hasFile; ++i)
             hasFile = hasAnyFileInWin(singleton->Wins.at(i));
@@ -179,7 +182,7 @@ void SessionDialog::reallySaveSession() {
         delete ui->listWidget->takeItem(ui->listWidget->row(it));
 
     QStringList files;
-    files.reserve(16); // heuristic to reduce reallocs
+    files.reserve(16);  // heuristic to reduce reallocs
 
     auto collectFilesFromWin = [&](FPwin* win) {
         const int n = win->ui->tabWidget->count();
@@ -199,7 +202,8 @@ void SessionDialog::reallySaveSession() {
     if (ui->windowBox->isChecked()) {
         if (auto* win = static_cast<FPwin*>(parent_))
             collectFilesFromWin(win);
-    } else {
+    }
+    else {
         auto* singleton = static_cast<FPsingleton*>(qApp);
         for (int i = 0; i < singleton->Wins.count(); ++i)
             collectFilesFromWin(singleton->Wins.at(i));
@@ -233,7 +237,7 @@ void SessionDialog::openSessions() {
         return;
 
     QStringList files;
-    files.reserve(count * 4); // rough guess to minimize reallocs
+    files.reserve(count * 4);  // rough guess to minimize reallocs
 
     {
         QSettings settings("featherpad", "fp");
@@ -258,7 +262,7 @@ void SessionDialog::openSessions() {
                 ++broken;
                 continue;
             }
-            win->newTabFromName(f, 1, 0, multiple); // 1: save cursor, posInLine ignored
+            win->newTabFromName(f, 1, 0, multiple);  // 1: save cursor, posInLine ignored
         }
 
         if (broken > 0) {
@@ -316,14 +320,17 @@ void SessionDialog::showPrompt(PROMPT prompt) {
     if (prompt == CLEAR) {
         ui->promptLabel->setText("<b>" + tr("Do you really want to remove all saved sessions?") + "</b>");
         connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::removeAll);
-    } else if (prompt == REMOVE) {
+    }
+    else if (prompt == REMOVE) {
         if (ui->listWidget->selectedItems().count() > 1)
             ui->promptLabel->setText("<b>" + tr("Do you really want to remove the selected sessions?") + "</b>");
         else
             ui->promptLabel->setText("<b>" + tr("Do you really want to remove the selected session?") + "</b>");
         connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::removeSelected);
-    } else { // NAME or RENAME
-        ui->promptLabel->setText("<b>" + tr("A session with the same name exists.<br>Do you want to overwrite it?") + "</b>");
+    }
+    else {  // NAME or RENAME
+        ui->promptLabel->setText("<b>" + tr("A session with the same name exists.<br>Do you want to overwrite it?") +
+                                 "</b>");
         if (prompt == NAME)
             connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::reallySaveSession);
         else
@@ -385,7 +392,7 @@ void SessionDialog::removeAll() {
 
     QSettings settings("featherpad", "fp");
     settings.beginGroup("sessions");
-    settings.remove(""); // remove the whole group
+    settings.remove("");  // remove the whole group
     settings.endGroup();
 }
 
@@ -468,7 +475,8 @@ void SessionDialog::reallyRenameSession() {
         if (!isFiltered) {
             cur->setText(rename_.newName);
             ui->listWidget->scrollToItem(cur);
-        } else {
+        }
+        else {
             // if filtered out, keep current item's text untouched and let filter refresh hide it
         }
     }
@@ -503,7 +511,8 @@ void SessionDialog::reallyApplyFilter() {
     // restore selection where possible
     if (filtered.count() == 1) {
         ui->listWidget->setCurrentRow(0);
-    } else if (!sel.isEmpty()) {
+    }
+    else if (!sel.isEmpty()) {
         for (int i = 0; i < ui->listWidget->count(); ++i) {
             if (sel.contains(ui->listWidget->item(i)->text()))
                 ui->listWidget->setCurrentRow(i, QItemSelectionModel::Select);
