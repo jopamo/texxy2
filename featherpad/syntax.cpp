@@ -1,6 +1,6 @@
 /*
- featherpad/syntax.cpp
- */
+ texxy/syntax.cpp
+*/
 
 #include "singleton.h"
 #include "ui_fp.h"
@@ -9,265 +9,247 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QTimer>
+#include <QHash>
+#include <QStringView>
 
 namespace FeatherPad {
 
-/*!
- * \brief Helper that fetches a QMimeType for a given file.
- */
+/*
+ helper: one shared QMimeDatabase
+*/
 static QMimeType getMimeType(const QFileInfo& fInfo) {
     static QMimeDatabase mimeDatabase;
     return mimeDatabase.mimeTypeForFile(fInfo);
 }
 
-/*!
- * \brief A lookup table for commonly used file extensions mapped to FeatherPad language keys.
- * Extension checks are done case-sensitively or insensitively as appropriate.
- */
-static const struct {
-    QString extension;   // e.g. ".cpp", ".py"
-    bool caseSensitive;  // whether matching is case-sensitive
-    QString language;    // e.g. "cpp", "python"
-} extensionLanguageMap[] = {{".cpp", true, "cpp"},
-                            {".cxx", true, "cpp"},
-                            {".h", true, "cpp"},
-                            {".c", true, "c"},
-                            {".sh", true, "sh"},
-                            {".ebuild", true, "sh"},
-                            {".eclass", true, "sh"},
-                            {".zsh", true, "sh"},
-                            {".rb", true, "ruby"},
-                            {".lua", true, "lua"},
-                            {".nelua", true, "lua"},
-                            {".py", true, "python"},
-                            {".pl", true, "perl"},
-                            {".pro", true, "qmake"},
-                            {".pri", true, "qmake"},
-                            {".tr", true, "troff"},
-                            {".t", true, "troff"},
-                            {".roff", true, "troff"},
-                            {".tex", true, "LaTeX"},
-                            {".ltx", true, "LaTeX"},
-                            {".latex", true, "LaTeX"},
-                            {".lyx", true, "LaTeX"},
-                            {".xml", false, "xml"},
-                            {".svg", false, "xml"},
-                            {".qrc", true, "xml"},
-                            {".rdf", true, "xml"},
-                            {".docbook", true, "xml"},
-                            {".fnx", true, "xml"},
-                            {".ts", true, "xml"},
-                            {".menu", true, "xml"},
-                            {".kml", false, "xml"},
-                            {".xspf", false, "xml"},
-                            {".asx", false, "xml"},
-                            {".nfo", true, "xml"},
-                            {".dae", true, "xml"},
-                            {".css", true, "css"},
-                            {".qss", true, "css"},
-                            {".scss", true, "scss"},
-                            {".p", true, "pascal"},
-                            {".pas", true, "pascal"},
-                            {".desktop", true, "desktop"},
-                            {".desktop.in", true, "desktop"},
-                            {".directory", true, "desktop"},
-                            {".kvconfig", true, "config"},
-                            {".service", true, "config"},
-                            {".mount", true, "config"},
-                            {".timer", true, "config"},
-                            {".pls", false, "config"},
-                            {".js", true, "javascript"},
-                            {".hx", true, "javascript"},
-                            {".java", true, "java"},
-                            {".json", true, "json"},
-                            {".qml", true, "qml"},
-                            {".log", false, "log"},
-                            {".php", true, "php"},
-                            {".diff", true, "diff"},
-                            {".patch", true, "diff"},
-                            {".srt", true, "srt"},
-                            {".theme", true, "theme"},
-                            {".fountain", true, "fountain"},
-                            {".yml", true, "yaml"},
-                            {".yaml", true, "yaml"},
-                            {".m3u", false, "m3u"},
-                            {".htm", false, "html"},
-                            {".html", false, "html"},
-                            {".markdown", true, "markdown"},
-                            {".md", true, "markdown"},
-                            {".mkd", true, "markdown"},
-                            {".rst", true, "reST"},
-                            {".dart", true, "dart"},
-                            {".go", true, "go"},
-                            {".rs", true, "rust"},
-                            {".tcl", true, "tcl"},
-                            {".tk", true, "tcl"},
-                            {".toml", true, "toml"}};
+/*
+ compile-time tables for filename and mime hints
+ keys for filename maps are stored lowercase to allow cheap case-insensitive lookup
+*/
+static const QHash<QString, QString> specialFilenamesMap = {
+    {"makefile", "makefile"},
+    {"makefile.am", "makefile"},
+    {"makelist", "makefile"},
+    {"pkgbuild", "sh"},
+    {"fstab", "sh"},
+    {"changelog", "changelog"},
+    {"gtkrc", "gtkrc"},
+    {"control", "deb"},
+    {"mirrorlist", "config"},
+    {"themerc", "openbox"},
+    {"bashrc", "sh"},
+    {"bash_profile", "sh"},
+    {"bash_functions", "sh"},
+    {"bash_logout", "sh"},
+    {"bash_aliases", "sh"},
+    {"xprofile", "sh"},
+    {"profile", "sh"},
+    {"mkshrc", "sh"},
+    {"zprofile", "sh"},
+    {"zlogin", "sh"},
+    {"zshrc", "sh"},
+    {"zshenv", "sh"},
+    {"cmakelists.txt", "cmake"},
+};
 
-/*!
- * \brief A lookup table for specific filenames (all compared case-insensitively) to language keys.
- */
-static const QHash<QString, QString> specialFilenamesMap = {{"makefile", "makefile"},
-                                                            {"makefile.am", "makefile"},
-                                                            {"makelist", "makefile"},
-                                                            {"pkgbuild", "sh"},  // Arch PKGBUILD
-                                                            {"fstab", "sh"},
-                                                            {"changelog", "changelog"},
-                                                            {"gtkrc", "gtkrc"},
-                                                            {"control", "deb"},
-                                                            {"mirrorlist", "config"},
-                                                            {"themerc", "openbox"},
-                                                            {"bashrc", "sh"},
-                                                            {"bash_profile", "sh"},
-                                                            {"bash_functions", "sh"},
-                                                            {"bash_logout", "sh"},
-                                                            {"bash_aliases", "sh"},
-                                                            {"xprofile", "sh"},
-                                                            {"profile", "sh"},
-                                                            {"mkshrc", "sh"},
-                                                            {"zprofile", "sh"},
-                                                            {"zlogin", "sh"},
-                                                            {"zshrc", "sh"},
-                                                            {"zshenv", "sh"},
-                                                            {"cmakelists.txt", "cmake"}};
+/*
+ mime to language map
+*/
+static const QHash<QString, QString> mimeLanguageMap = {
+    {"text/x-c++", "cpp"},
+    {"text/x-c++src", "cpp"},
+    {"text/x-c++hdr", "cpp"},
+    {"text/x-chdr", "cpp"},
+    {"text/x-c", "c"},
+    {"text/x-csrc", "c"},
+    {"application/x-shellscript", "sh"},
+    {"text/x-shellscript", "sh"},
+    {"application/x-ruby", "ruby"},
+    {"text/x-lua", "lua"},
+    {"application/x-perl", "perl"},
+    {"text/x-makefile", "makefile"},
+    {"text/x-cmake", "cmake"},
+    {"application/vnd.nokia.qt.qmakeprofile", "qmake"},
+    {"text/troff", "troff"},
+    {"application/x-troff-man", "troff"},
+    {"text/x-tex", "LaTeX"},
+    {"application/x-lyx", "LaTeX"},
+    {"text/html", "html"},
+    {"application/xhtml+xml", "html"},
+    {"application/xml", "xml"},
+    {"application/xml-dtd", "xml"},
+    {"text/feathernotes-fnx", "xml"},
+    {"audio/x-ms-asx", "xml"},
+    {"text/x-nfo", "xml"},
+    {"text/css", "css"},
+    {"text/x-scss", "scss"},
+    {"text/x-pascal", "pascal"},
+    {"text/x-changelog", "changelog"},
+    {"application/x-desktop", "desktop"},
+    {"audio/x-scpls", "config"},
+    {"application/vnd.kde.kcfgc", "config"},
+    {"application/javascript", "javascript"},
+    {"text/javascript", "javascript"},
+    {"text/x-java", "java"},
+    {"application/json", "json"},
+    {"application/schema+json", "json"},
+    {"text/x-qml", "qml"},
+    {"text/x-log", "log"},
+    {"application/x-php", "php"},
+    {"text/x-php", "php"},
+    {"application/x-theme", "theme"},
+    {"text/x-diff", "diff"},
+    {"text/x-patch", "diff"},
+    {"text/markdown", "markdown"},
+    {"audio/x-mpegurl", "m3u"},
+    {"application/vnd.apple.mpegurl", "m3u"},
+    {"text/x-go", "go"},
+    {"text/rust", "rust"},
+    {"text/x-tcl", "tcl"},
+    {"text/tcl", "tcl"},
+    {"application/toml", "toml"},
+};
 
-/*!
- * \brief A lookup table for MIME types to language keys.
- */
-static const QHash<QString, QString> mimeLanguageMap = {{"text/x-c++", "cpp"},
-                                                        {"text/x-c++src", "cpp"},
-                                                        {"text/x-c++hdr", "cpp"},
-                                                        {"text/x-chdr", "cpp"},
-                                                        {"text/x-c", "c"},
-                                                        {"text/x-csrc", "c"},
-                                                        {"application/x-shellscript", "sh"},
-                                                        {"text/x-shellscript", "sh"},
-                                                        {"application/x-ruby", "ruby"},
-                                                        {"text/x-lua", "lua"},
-                                                        {"application/x-perl", "perl"},
-                                                        {"text/x-makefile", "makefile"},
-                                                        {"text/x-cmake", "cmake"},
-                                                        {"application/vnd.nokia.qt.qmakeprofile", "qmake"},
-                                                        {"text/troff", "troff"},
-                                                        {"application/x-troff-man", "troff"},
-                                                        {"text/x-tex", "LaTeX"},
-                                                        {"application/x-lyx", "LaTeX"},
-                                                        {"text/html", "html"},
-                                                        {"application/xhtml+xml", "html"},
-                                                        {"application/xml", "xml"},
-                                                        {"application/xml-dtd", "xml"},
-                                                        {"text/feathernotes-fnx", "xml"},
-                                                        {"audio/x-ms-asx", "xml"},
-                                                        {"text/x-nfo", "xml"},
-                                                        {"text/css", "css"},
-                                                        {"text/x-scss", "scss"},
-                                                        {"text/x-pascal", "pascal"},
-                                                        {"text/x-changelog", "changelog"},
-                                                        {"application/x-desktop", "desktop"},
-                                                        {"audio/x-scpls", "config"},
-                                                        {"application/vnd.kde.kcfgc", "config"},
-                                                        {"application/javascript", "javascript"},
-                                                        {"text/javascript", "javascript"},
-                                                        {"text/x-java", "java"},
-                                                        {"application/json", "json"},
-                                                        {"application/schema+json", "json"},
-                                                        {"text/x-qml", "qml"},
-                                                        {"text/x-log", "log"},
-                                                        {"application/x-php", "php"},
-                                                        {"text/x-php", "php"},
-                                                        {"application/x-theme", "theme"},
-                                                        {"text/x-diff", "diff"},
-                                                        {"text/x-patch", "diff"},
-                                                        {"text/markdown", "markdown"},
-                                                        {"audio/x-mpegurl", "m3u"},
-                                                        {"application/vnd.apple.mpegurl", "m3u"},
-                                                        {"text/x-go", "go"},
-                                                        {"text/rust", "rust"},
-                                                        {"text/x-tcl", "tcl"},
-                                                        {"text/tcl", "tcl"},
-                                                        {"application/toml", "toml"}};
+/*
+ build-once extension maps for O(1) lookup by suffix
+  - exactMap: case-sensitive extensions like .h .cpp
+  - lowerMap: case-insensitive extensions like .htm .html .xml family
+ store keys with leading dot to match endings precisely
+*/
+struct ExtMaps {
+    QHash<QString, QString> exactMap;
+    QHash<QString, QString> lowerMap;
+};
 
-//------------------------------------------------------------------------------
-/*!
- * \brief Utility: checks if \a baseName matches any special filename (case-insensitive).
- */
+static const ExtMaps& extMaps() {
+    static const ExtMaps maps = [] {
+        ExtMaps m;
+
+        struct Entry { const char* ext; bool caseSensitive; const char* lang; };
+        static const Entry entries[] = {
+            {".cpp", true, "cpp"}, {".cxx", true, "cpp"}, {".h", true, "cpp"}, {".c", true, "c"},
+            {".sh", true, "sh"}, {".ebuild", true, "sh"}, {".eclass", true, "sh"}, {".zsh", true, "sh"},
+            {".rb", true, "ruby"}, {".lua", true, "lua"}, {".nelua", true, "lua"}, {".py", true, "python"},
+            {".pl", true, "perl"}, {".pro", true, "qmake"}, {".pri", true, "qmake"},
+            {".tr", true, "troff"}, {".t", true, "troff"}, {".roff", true, "troff"},
+            {".tex", true, "LaTeX"}, {".ltx", true, "LaTeX"}, {".latex", true, "LaTeX"}, {".lyx", true, "LaTeX"},
+            {".xml", false, "xml"}, {".svg", false, "xml"}, {".qrc", true, "xml"}, {".rdf", true, "xml"},
+            {".docbook", true, "xml"}, {".fnx", true, "xml"}, {".ts", true, "xml"}, {".menu", true, "xml"},
+            {".kml", false, "xml"}, {".xspf", false, "xml"}, {".asx", false, "xml"}, {".nfo", true, "xml"},
+            {".dae", true, "xml"},
+            {".css", true, "css"}, {".qss", true, "css"}, {".scss", true, "scss"},
+            {".p", true, "pascal"}, {".pas", true, "pascal"},
+            {".desktop", true, "desktop"}, {".desktop.in", true, "desktop"}, {".directory", true, "desktop"},
+            {".kvconfig", true, "config"}, {".service", true, "config"}, {".mount", true, "config"},
+            {".timer", true, "config"}, {".pls", false, "config"},
+            {".js", true, "javascript"}, {".hx", true, "javascript"},
+            {".java", true, "java"}, {".json", true, "json"},
+            {".qml", true, "qml"},
+            {".log", false, "log"},
+            {".php", true, "php"},
+            {".diff", true, "diff"}, {".patch", true, "diff"},
+            {".srt", true, "srt"},
+            {".theme", true, "theme"},
+            {".fountain", true, "fountain"},
+            {".yml", true, "yaml"}, {".yaml", true, "yaml"},
+            {".m3u", false, "m3u"},
+            {".htm", false, "html"}, {".html", false, "html"},
+            {".markdown", true, "markdown"}, {".md", true, "markdown"}, {".mkd", true, "markdown"},
+            {".rst", true, "reST"},
+            {".dart", true, "dart"},
+            {".go", true, "go"},
+            {".rs", true, "rust"},
+            {".tcl", true, "tcl"}, {".tk", true, "tcl"},
+            {".toml", true, "toml"},
+        };
+
+        for (const auto& e : entries) {
+            const QString key = QString::fromLatin1(e.ext);
+            if (e.caseSensitive)
+                m.exactMap.insert(key, QString::fromLatin1(e.lang));
+            else
+                m.lowerMap.insert(key.toLower(), QString::fromLatin1(e.lang));
+        }
+        return m;
+    }();
+    return maps;
+}
+
+/*
+ utility: case-insensitive special filename check
+*/
 static QString languageForSpecialFilename(const QString& baseName) {
     const QString key = baseName.toLower();
-    if (specialFilenamesMap.contains(key)) {
-        return specialFilenamesMap.value(key);
-    }
-    return QString();
+    if (const auto it = specialFilenamesMap.constFind(key); it != specialFilenamesMap.constEnd())
+        return it.value();
+    return {};
 }
 
-//------------------------------------------------------------------------------
-/*!
- * \brief Utility: checks if \a fname ends with a known extension from \c extensionLanguageMap.
- * Returns an empty string if not found.
- */
-static QString languageForExtension(const QString& fname) {
-    const QString lowerFname = fname.toLower();
-    for (auto& entry : extensionLanguageMap) {
-        // If case-insensitive, compare with lowerFname; otherwise compare directly
-        if (entry.caseSensitive) {
-            if (fname.endsWith(entry.extension)) {
-                return entry.language;
-            }
-        }
-        else {
-            if (lowerFname.endsWith(entry.extension)) {
-                return entry.language;
-            }
-        }
+/*
+ utility: O(dots) extension lookup using maps above
+ generates suffix candidates starting at each dot in the basename
+ tries exact match first, then case-insensitive map
+*/
+static QString languageForExtension(QStringView fullPath) {
+    // slice to basename without allocating
+    int slash = fullPath.lastIndexOf(QChar('/'));
+#ifdef Q_OS_WIN
+    slash = std::max(slash, fullPath.lastIndexOf(QChar('\\')));
+#endif
+    const QStringView base = (slash >= 0) ? fullPath.sliced(slash + 1) : fullPath;
+
+    const auto& maps = extMaps();
+
+    // walk all dot positions from left to right to handle multi-part like .desktop.in
+    int pos = base.indexOf('.');
+    while (pos >= 0) {
+        const QStringView suff = base.sliced(pos); // includes the leading dot
+        // try exact case-sensitive
+        if (const auto it = maps.exactMap.constFind(suff.toString()); it != maps.exactMap.constEnd())
+            return it.value();
+        // try case-insensitive by lowercasing the view once
+        const QString lower = suff.toString().toLower();
+        if (const auto it2 = maps.lowerMap.constFind(lower); it2 != maps.lowerMap.constEnd())
+            return it2.value();
+        pos = base.indexOf('.', pos + 1);
     }
-    return QString();  // not found
+
+    return {};
 }
 
-//------------------------------------------------------------------------------
-/*!
- * \brief Utility: checks if the QMimeType is recognized in \c mimeLanguageMap.
- * Returns an empty string if not found.
- */
+/*
+ utility: check a QMimeType and its parents
+*/
 static QString languageForMime(const QMimeType& mimeType) {
     const QString mime = mimeType.name();
-    if (mimeLanguageMap.contains(mime)) {
-        return mimeLanguageMap.value(mime);
-    }
-    // Check parent mime types as fallback:
+    if (const auto it = mimeLanguageMap.constFind(mime); it != mimeLanguageMap.constEnd())
+        return it.value();
+
     for (const auto& parentMime : mimeType.parentMimeTypes()) {
-        if (mimeLanguageMap.contains(parentMime)) {
-            return mimeLanguageMap.value(parentMime);
-        }
+        if (const auto it = mimeLanguageMap.constFind(parentMime); it != mimeLanguageMap.constEnd())
+            return it.value();
     }
-    return QString();  // not found
+    return {};
 }
 
-//------------------------------------------------------------------------------
-/*!
- * \brief Resolves symlinks and returns the final canonical path if possible,
- * otherwise the original or symlink target.
- */
+/*
+ utility: resolve symlinks when possible
+*/
 static QString resolvedFilePath(const QString& filename) {
     QFileInfo info(filename);
     if (!info.exists())
         return filename;
-
     if (info.isSymLink()) {
         const QString finalTarget = info.canonicalFilePath();
-        if (!finalTarget.isEmpty()) {
-            return finalTarget;
-        }
-        else {
-            return info.symLinkTarget();
-        }
+        return finalTarget.isEmpty() ? info.symLinkTarget() : finalTarget;
     }
     return filename;
 }
 
-//------------------------------------------------------------------------------
-/*!
- * \brief Determine and set the program language of a TextEdit based on filename, extension or MIME type.
- * Falls back to "url".
- */
+/*
+ decide the program language for a TextEdit by filename, extension, or mime
+ falls back to "url"
+*/
 void FPwin::setProgLang(TextEdit* textEdit) {
     if (!textEdit)
         return;
@@ -276,131 +258,107 @@ void FPwin::setProgLang(TextEdit* textEdit) {
     if (fname.isEmpty())
         return;
 
-    // If it's a symlink, resolve it
     fname = resolvedFilePath(fname);
 
-    // If file ends with ".sub", do not set any language => default "url"
-    if (fname.endsWith(".sub", Qt::CaseInsensitive)) {
+    if (fname.endsWith(".sub", Qt::CaseInsensitive))
         return;
-    }
 
-    // Step 1: Check special filenames (Makefile, PKGBUILD, etc.)
-    QString baseName = QFileInfo(fname).fileName();  // or fname.section('/', -1);
-    QString lang = languageForSpecialFilename(baseName);
-    if (!lang.isEmpty()) {
+    const QFileInfo fi(fname);
+    const QString baseName = fi.fileName();
+
+    if (QString lang = languageForSpecialFilename(baseName); !lang.isEmpty()) {
         textEdit->setProg(lang);
         return;
     }
 
-    // Step 2: If there's an extension, try extension-based detection
-    lang = languageForExtension(fname);
-    if (!lang.isEmpty()) {
+    if (QString lang = languageForExtension(QStringView{fname}); !lang.isEmpty()) {
         textEdit->setProg(lang);
         return;
     }
 
-    // Step 3: If all else fails, check MIME type
-    {
-        QFileInfo fInfo(fname);
-        if (fInfo.exists()) {
-            QMimeType mimeType = getMimeType(fInfo);
-            // Python might come as text/x-python3, etc.
-            // So, do a quick check for "text/x-python" prefix:
-            const QString mimeName = mimeType.name();
-            if (mimeName.startsWith("text/x-python")) {
-                lang = "python";
-            }
-            else {
-                // Fallback to direct mapping:
-                lang = languageForMime(mimeType);
-            }
-        }
-        else {
-            // If file doesn't exist on disk, fallback to "url"
-            lang = "url";
-        }
+    QString lang;
+    if (fi.exists()) {
+        const QMimeType mimeType = getMimeType(fi);
+        const QString mimeName = mimeType.name();
+        if (mimeName.startsWith(QStringLiteral("text/x-python")))
+            lang = QStringLiteral("python");
+        else
+            lang = languageForMime(mimeType);
+    } else {
+        lang = QStringLiteral("url");
     }
 
-    if (lang.isEmpty()) {
-        // Finally, fallback to "url"
-        lang = "url";
-    }
+    if (lang.isEmpty())
+        lang = QStringLiteral("url");
 
     textEdit->setProg(lang);
 }
 
-//------------------------------------------------------------------------------
+/*
+ toggle syntax highlighting across tabs and keep UI responsive
+*/
 void FPwin::toggleSyntaxHighlighting() {
     const int count = ui->tabWidget->count();
     if (count == 0)
         return;
 
-    bool enableSH = ui->actionSyntax->isChecked();
+    const bool enableSH = ui->actionSyntax->isChecked();
     if (enableSH)
-        makeBusy();  // it may take a while with huge texts
+        makeBusy(); // may take a while with huge texts
 
     for (int i = 0; i < count; ++i) {
-        auto tabPage = qobject_cast<TabPage*>(ui->tabWidget->widget(i));
-        if (!tabPage)
-            continue;
-
-        TextEdit* textEdit = tabPage->textEdit();
-        syntaxHighlighting(textEdit, enableSH, textEdit->getLang());
+        if (auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->widget(i))) {
+            TextEdit* te = tabPage->textEdit();
+            syntaxHighlighting(te, enableSH, te->getLang());
+        }
     }
 
-    // Update language button for the current tab
-    if (auto tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
+    if (auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         updateLangBtn(tabPage->textEdit());
-    }
 
-    if (enableSH) {
-        // Defer unbusy so the UI can refresh
+    if (enableSH)
         QTimer::singleShot(0, this, &FPwin::unbusy);
-    }
 }
 
-//------------------------------------------------------------------------------
+/*
+ apply or remove syntax highlighting for one editor
+*/
 void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString& lang) {
-    if (!textEdit || textEdit->isUneditable()) {
+    if (!textEdit || textEdit->isUneditable())
         return;
-    }
 
     if (highlight) {
         QString progLan = lang.isEmpty() ? textEdit->getProg() : lang;
 
-        // Some special checks
-        if (progLan.isEmpty() || progLan == "help") {
+        if (progLan.isEmpty() || progLan == "help")
             return;
-        }
 
         Config config = static_cast<FPsingleton*>(qApp)->getConfig();
         const qint64 textSize = textEdit->getSize();
         const qint64 maxSize = config.getMaxSHSize() * 1024LL * 1024LL;
         if (textSize > maxSize) {
-            // Warn user if active tab is this textEdit
             QTimer::singleShot(100, textEdit, [=]() {
-                auto tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
-                if (tabPage && tabPage->textEdit() == textEdit) {
-                    showWarningBar(
-                        tr("<center><b><big>The size limit for syntax highlighting is exceeded.</big></b></center>"));
+                if (auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
+                    if (tabPage->textEdit() == textEdit) {
+                        showWarningBar(
+                            tr("<center><b><big>The size limit for syntax highlighting is exceeded</big></b></center>"));
+                    }
                 }
             });
             return;
         }
 
-        // Create the highlighter if it doesn't exist
         if (!qobject_cast<Highlighter*>(textEdit->getHighlighter())) {
-            QPoint topLeft(0, 0);
+            const QPoint topLeft(0, 0);
             QTextCursor start = textEdit->cursorForPosition(topLeft);
 
-            // Use geometry to get bottom-right
-            QPoint bottomRight(textEdit->width(), textEdit->height());
+            const QPoint bottomRight(textEdit->width(), textEdit->height());
             QTextCursor end = textEdit->cursorForPosition(bottomRight);
 
             textEdit->setDrawIndetLines(config.getShowWhiteSpace());
             textEdit->setVLineDistance(config.getVLineDistance());
 
-            auto highlighter = new Highlighter(
+            auto* highlighter = new Highlighter(
                 textEdit->document(), progLan, start, end, textEdit->hasDarkScheme(), config.getShowWhiteSpace(),
                 config.getShowEndings(), config.getWhiteSpaceValue(),
                 config.customSyntaxColors().isEmpty()
@@ -409,7 +367,6 @@ void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString
             textEdit->setHighlighter(highlighter);
         }
 
-        // Connect signals after syntax highlighting is set
         QTimer::singleShot(0, textEdit, [this, textEdit]() {
             if (textEdit->isVisible()) {
                 formatTextRect();
@@ -421,18 +378,14 @@ void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString
             connect(textEdit, &TextEdit::resized, this, &FPwin::formatTextRect);
             connect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::formatOnTextChange);
         });
-    }
-    else {
-        // If turning highlighting off, remove the highlighter and disconnect signals
-        auto highlighter = qobject_cast<Highlighter*>(textEdit->getHighlighter());
-        if (highlighter) {
+    } else {
+        if (auto* highlighter = qobject_cast<Highlighter*>(textEdit->getHighlighter())) {
             disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::formatOnTextChange);
             disconnect(textEdit, &TextEdit::resized, this, &FPwin::formatTextRect);
             disconnect(textEdit, &TextEdit::updateRect, this, &FPwin::formatTextRect);
             disconnect(textEdit, &QPlainTextEdit::blockCountChanged, this, &FPwin::formatOnBlockChange);
             disconnect(textEdit, &TextEdit::updateBracketMatching, this, &FPwin::matchBrackets);
 
-            // Remove bracket highlights
             QList<QTextEdit::ExtraSelection> es = textEdit->extraSelections();
             int n = textEdit->getRedSel().count();
             while (n > 0 && !es.isEmpty()) {
@@ -442,7 +395,6 @@ void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString
             textEdit->setRedSel(QList<QTextEdit::ExtraSelection>());
             textEdit->setExtraSelections(es);
 
-            // Turn off indentation lines
             textEdit->setDrawIndetLines(false);
             textEdit->setVLineDistance(0);
 
@@ -451,47 +403,45 @@ void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString
     }
 }
 
-//------------------------------------------------------------------------------
+/*
+ defer rectangle update slightly on text changes to keep UI smooth
+*/
 void FPwin::formatOnTextChange(int /*position*/, int charsRemoved, int charsAdded) const {
-    if (charsRemoved > 0 || charsAdded > 0) {
-        // Defer so the layout manager can update
+    if (charsRemoved > 0 || charsAdded > 0)
         QTimer::singleShot(0, this, &FPwin::formatTextRect);
-    }
 }
 
-//------------------------------------------------------------------------------
+/*
+ block count changes require an immediate limit update
+*/
 void FPwin::formatOnBlockChange(int /* newBlockCount */) const {
     formatTextRect();
 }
 
-//------------------------------------------------------------------------------
+/*
+ limit highlighter work to the visible area and rehighlight pending blocks
+*/
 void FPwin::formatTextRect() const {
-    // This function is supposed to be called for the current tab
-    auto tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
-    if (!tabPage)
-        return;
+    if (auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
+        TextEdit* textEdit = tabPage->textEdit();
+        if (auto* highlighter = qobject_cast<Highlighter*>(textEdit->getHighlighter())) {
+            const QPoint topLeft(0, 0);
+            QTextCursor start = textEdit->cursorForPosition(topLeft);
 
-    TextEdit* textEdit = tabPage->textEdit();
-    auto highlighter = qobject_cast<Highlighter*>(textEdit->getHighlighter());
-    if (!highlighter)
-        return;
+            const QPoint bottomRight(textEdit->width(), textEdit->height());
+            QTextCursor end = textEdit->cursorForPosition(bottomRight);
 
-    QPoint topLeft(0, 0);
-    QTextCursor start = textEdit->cursorForPosition(topLeft);
+            highlighter->setLimit(start, end);
 
-    QPoint bottomRight(textEdit->width(), textEdit->height());
-    QTextCursor end = textEdit->cursorForPosition(bottomRight);
-
-    highlighter->setLimit(start, end);
-
-    QTextBlock block = start.block();
-    while (block.isValid() && block.blockNumber() <= end.blockNumber()) {
-        if (auto data = static_cast<TextBlockData*>(block.userData())) {
-            if (!data->isHighlighted()) {
-                highlighter->rehighlightBlock(block);
+            QTextBlock block = start.block();
+            while (block.isValid() && block.blockNumber() <= end.blockNumber()) {
+                if (auto* data = static_cast<TextBlockData*>(block.userData())) {
+                    if (!data->isHighlighted())
+                        highlighter->rehighlightBlock(block);
+                }
+                block = block.next();
             }
         }
-        block = block.next();
     }
 }
 
