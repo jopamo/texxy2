@@ -1,25 +1,11 @@
 /*
- * Copyright (C) Pedram Pourang (aka Tsu Jan) 2014-2020 <tsujan2000@gmail.com>
- *
- * FeatherPad is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * FeatherPad is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
- */
+ texxy/singleton.cpp
+*/
 
 #include <QDir>
 #include <QScreen>
 #include <QDialog>
+#include <QUrl>
 #include <QDBusConnection>
 #include <QDBusInterface>
 
@@ -36,110 +22,110 @@
 
 namespace FeatherPad {
 
-static const char* serviceName = "org.featherpad.FeatherPad";
-static const char* ifaceName = "org.featherpad.Application";
+static constexpr const char* serviceName = "org.featherpad.FeatherPad";
+static constexpr const char* ifaceName   = "org.featherpad.Application";
 
 FPsingleton::FPsingleton(int& argc, char** argv) : QApplication(argc, argv) {
 #ifdef HAS_X11
-    isX11_ = (QString::compare(QGuiApplication::platformName(), "xcb", Qt::CaseInsensitive) == 0);
+    const QString platform = QGuiApplication::platformName();
+    isX11_ = (QString::compare(platform, QStringLiteral("xcb"), Qt::CaseInsensitive) == 0);
 #else
     isX11_ = false;
 #endif
-
-    if (isX11_)
-        isWayland_ = false;
-    else
-        isWayland_ = (QString::compare(QGuiApplication::platformName(), "wayland", Qt::CaseInsensitive) == 0);
+    isWayland_ = false; // explicitly do not support Wayland
 
     isPrimaryInstance_ = true;
     standalone_ = false;
     quitSignalReceived_ = false;
     isRoot_ = false;
+
     config_.readConfig();
     lastFiles_ = config_.getLastFiles();
+
     if (config_.getSharedSearchHistory())
         searchModel_ = new QStandardItemModel(0, 1, this);
     else
         searchModel_ = nullptr;
 }
-/*************************/
+
 FPsingleton::~FPsingleton() {
     qDeleteAll(Wins);
 }
-/*************************/
+
 void FPsingleton::init(bool standalone) {
     standalone_ = standalone;
     isPrimaryInstance_ = standalone;
+
     if (!standalone_) {
         QDBusConnection dbus = QDBusConnection::sessionBus();
-        if (!dbus.isConnected())  // interpret it as the lack of D-Bus
-        {
+        if (!dbus.isConnected()) {
             isPrimaryInstance_ = true;
             standalone_ = true;
-        }
-        else if (dbus.registerService(QLatin1String(serviceName))) {
+        } else if (dbus.registerService(QLatin1String(serviceName))) {
             isPrimaryInstance_ = true;
             new FeatherPadAdaptor(this);
             dbus.registerObject(QStringLiteral("/Application"), this);
         }
     }
 }
-/*************************/
+
 void FPsingleton::quitting() {
-    /* save some important info if windows aren't closed
-       (e.g., when the app is terminated by SIGTERM) */
+    // save important info if windows aren't closed
     for (int i = 0; i < Wins.size(); ++i)
         Wins.at(i)->cleanUpOnTerminating(config_, i == Wins.size() - 1);
 
-    if (searchModel_)
-        delete searchModel_;
+    delete searchModel_;
+    searchModel_ = nullptr;
+
     config_.writeConfig();
 }
-/*************************/
+
 void FPsingleton::quitSignalReceived() {
     quitSignalReceived_ = true;
     quit();
 }
-/*************************/
+
 void FPsingleton::sendInfo(const QStringList& info) {
     QDBusConnection dbus = QDBusConnection::sessionBus();
-    QDBusInterface iface(QLatin1String(serviceName), QStringLiteral("/Application"), QLatin1String(ifaceName), dbus,
+    QDBusInterface iface(QLatin1String(serviceName),
+                         QStringLiteral("/Application"),
+                         QLatin1String(ifaceName),
+                         dbus,
                          this);
     iface.call(QStringLiteral("handleInfo"), info);
 }
-/*************************/
-// Called only in standalone mode.
+
+// called only in standalone mode
 void FPsingleton::sendRecentFile(const QString& file, bool recentOpened) {
-    QDBusMessage methodCall = QDBusMessage::createMethodCall(QLatin1String(serviceName), QStringLiteral("/Application"),
-                                                             QString(), QStringLiteral("addRecentFile"));
+    QDBusMessage methodCall = QDBusMessage::createMethodCall(QLatin1String(serviceName),
+                                                             QStringLiteral("/Application"),
+                                                             QString(),
+                                                             QStringLiteral("addRecentFile"));
     methodCall.setAutoStartService(false);
-    QList<QVariant> args;
-    args.append(file);
-    args.append(recentOpened);
-    methodCall.setArguments(args);
+    methodCall.setArguments(QList<QVariant>{file, recentOpened});
     QDBusConnection::sessionBus().call(methodCall, QDBus::NoBlock, 1000);
 }
-/*************************/
+
 bool FPsingleton::cursorInfo(const QString& commndOpt, int& lineNum, int& posInLine) {
     if (commndOpt.isEmpty())
         return false;
-    lineNum = 0;  // no cursor placing
+
+    lineNum = 0;   // no cursor placing
     posInLine = 0;
-    if (commndOpt == "+") {
-        lineNum = -2;   // means the end (-> FPwin::newTabFromName)
-        posInLine = 0;  // useless
+
+    if (commndOpt == QStringLiteral("+")) {
+        lineNum = -2;  // means the end (-> FPwin::newTabFromName)
+        posInLine = 0;
         return true;
-    }
-    else if (commndOpt.startsWith("+")) {
-        bool ok;
+    } else if (commndOpt.startsWith(QLatin1Char('+'))) {
+        bool ok = false;
         lineNum = commndOpt.toInt(&ok);  // "+" is included
         if (ok) {
-            if (lineNum > 0)   // otherwise, the cursor will be ignored (-> FPwin::newTabFromName)
-                lineNum += 1;  // 1 is reserved for session files (-> FPwin::newTabFromName)
+            if (lineNum > 0)            // otherwise, the cursor will be ignored (-> FPwin::newTabFromName)
+                lineNum += 1;           // 1 is reserved for session files (-> FPwin::newTabFromName)
             return true;
-        }
-        else {
-            QStringList l = commndOpt.split(",");
+        } else {
+            const QStringList l = commndOpt.split(QLatin1Char(','));
             if (l.count() == 2) {
                 lineNum = l.at(0).toInt(&ok);
                 if (ok) {
@@ -155,7 +141,7 @@ bool FPsingleton::cursorInfo(const QString& commndOpt, int& lineNum, int& posInL
     }
     return false;
 }
-/*************************/
+
 QStringList FPsingleton::processInfo(const QStringList& info,
                                      long& desktop,
                                      int& lineNum,
@@ -164,35 +150,40 @@ QStringList FPsingleton::processInfo(const QStringList& info,
     desktop = -1;
     lineNum = 0;  // no cursor placing
     posInLine = 0;
+
     QStringList sl = info;
-    if (sl.isEmpty())  // normally impossible, because of desktop number and current directory
-    {
+    if (sl.isEmpty()) {
         *newWindow = true;
-        return QStringList();
+        return {};
     }
+
     *newWindow = standalone_;  // standalone_ is true without D-Bus
+
     desktop = sl.at(0).toInt();
     sl.removeFirst();
+
     if (sl.isEmpty())
-        return QStringList();
+        return {};
+
     QDir curDir(sl.at(0));
     sl.removeFirst();
-    if (!sl.isEmpty() && (sl.at(0) == "--standalone" || sl.at(0) == "-s"))
+
+    if (!sl.isEmpty() && (sl.at(0) == QLatin1String("--standalone") || sl.at(0) == QLatin1String("-s")))
         sl.removeFirst();  // "--standalone" is always the first option
+
     if (sl.isEmpty())
-        return QStringList();
+        return {};
+
     bool hasCurInfo = cursorInfo(sl.at(0), lineNum, posInLine);
     if (hasCurInfo) {
         sl.removeFirst();
-        if (!sl.isEmpty()) {  // check if the second option is --win/-w
-            if (sl.at(0) == "--win" || sl.at(0) == "-w") {
+        if (!sl.isEmpty()) {
+            if (sl.at(0) == QLatin1String("--win") || sl.at(0) == QLatin1String("-w")) {
                 *newWindow = true;
                 sl.removeFirst();
             }
         }
-    }
-    // check if the first option is --win/-w
-    else if (sl.at(0) == "--win" || sl.at(0) == "-w") {
+    } else if (sl.at(0) == QLatin1String("--win") || sl.at(0) == QLatin1String("-w")) {
         *newWindow = true;
         sl.removeFirst();
         if (!sl.isEmpty())
@@ -201,98 +192,103 @@ QStringList FPsingleton::processInfo(const QStringList& info,
             sl.removeFirst();
     }
 
-    /* always return absolute clean paths (works around KDE's double slash bug too) */
+    // always return absolute clean paths
     QStringList filesList;
+    filesList.reserve(sl.size());
+
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 6, 0))
-    for (const auto& path : std::as_const(sl))
+    for (const QString& path : std::as_const(sl))
 #else
-    for (const auto& path : qAsConst(sl))
+    for (const QString& path : qAsConst(sl))
 #endif
     {
-        if (!path.isEmpty())  // no empty path/name
-        {
-            QString realPath = path;
-#ifdef __OS2__
-            /* Check whether the file path begins with a driverletter + ':'.
-               QUrl mistakes that for a scheme. */
-            if (path.indexOf(QRegularExpression("^[A-Za-z]:")) != -1)
-                realPath.prepend("file:");
-#endif
-            QString scheme = QUrl(realPath).scheme();
-            if (scheme == "file")
-                realPath = QUrl(realPath).toLocalFile();
-            else if (scheme == "admin")  // gvfs' "admin:///"
-                realPath = QUrl(realPath).path();
-            else if (!scheme.isEmpty())
-                continue;
-            realPath = curDir.absoluteFilePath(realPath);  // also works with absolute paths outside curDir
-            filesList << QDir::cleanPath(realPath);
-        }
+        if (path.isEmpty())
+            continue;
+
+        QString realPath = path;
+
+        const QUrl url(realPath);
+        const QString scheme = url.scheme();
+
+        if (scheme == QLatin1String("file"))
+            realPath = url.toLocalFile();
+        else if (scheme == QLatin1String("admin"))
+            realPath = url.path();
+        else if (!scheme.isEmpty())
+            continue;
+
+        realPath = curDir.absoluteFilePath(realPath);
+        filesList << QDir::cleanPath(realPath);
     }
+
     if (filesList.isEmpty() && hasCurInfo)
         qDebug("FeatherPad: File path/name is missing.");
+
     return filesList;
 }
-/*************************/
+
 void FPsingleton::firstWin(const QStringList& info) {
 #if defined Q_OS_LINUX || defined Q_OS_FREEBSD || defined Q_OS_OPENBSD || defined Q_OS_NETBSD || defined Q_OS_HURD
     isRoot_ = (geteuid() == 0);
 #endif
     int lineNum = 0, posInLine = 0;
     long d = -1;
-    bool openNewWin;
+    bool openNewWin = false;
+
     const QStringList filesList = processInfo(info, d, lineNum, posInLine, &openNewWin);
-    /*if (config_.getOpenInWindows() && !filesList.isEmpty())
-    {
-        for (const auto &file : filesList)
-          newWin (QStringList() << file, lineNum, posInLine);
-    }
-    else*/
+
     newWin(filesList, lineNum, posInLine);
-    lastFiles_ = QStringList();  // they should be called only with the session start
+
+    lastFiles_.clear();  // they should be called only with the session start
 }
-/*************************/
+
 FPwin* FPsingleton::newWin(const QStringList& filesList, int lineNum, int posInLine) {
     FPwin* fp = new FPwin(nullptr);
     fp->show();
+
     if (isRoot_)
         fp->showRootWarning();
+
     Wins.append(fp);
 
     if (!filesList.isEmpty()) {
-        bool multiple(filesList.count() > 1 || fp->isLoading());
-        for (int i = 0; i < filesList.count(); ++i)  // open all files in new tabs
+        const bool multiple = (filesList.count() > 1 || fp->isLoading());
+        for (int i = 0; i < filesList.count(); ++i)
             fp->newTabFromName(filesList.at(i), lineNum, posInLine, multiple);
-    }
-    else if (!lastFiles_.isEmpty()) {
-        bool multiple(lastFiles_.count() > 1 || fp->isLoading());
+    } else if (!lastFiles_.isEmpty()) {
+        const bool multiple = (lastFiles_.count() > 1 || fp->isLoading());
         for (int i = 0; i < lastFiles_.count(); ++i)
             fp->newTabFromName(lastFiles_.at(i), -1, 0, multiple);  // restore cursor positions too
     }
 
     return fp;
 }
-/*************************/
+
 void FPsingleton::removeWin(FPwin* win) {
     Wins.removeOne(win);
     win->deleteLater();
 }
-/*************************/
-// Called only by D-Bus.
+
+// called only by D-Bus
 void FPsingleton::handleInfo(const QStringList& info) {
     int lineNum = 0, posInLine = 0;
     long d = -1;
-    bool openNewWin;
+    bool openNewWin = false;
+
     const QStringList filesList = processInfo(info, d, lineNum, posInLine, &openNewWin);
-    if (openNewWin /* && !config_.getOpenInWindows()*/) {
+
+    if (openNewWin) {
         newWin(filesList, lineNum, posInLine);
         return;
     }
+
     bool found = false;
+
     if (!config_.getOpenInWindows()) {
         QRect sr;
         if (QScreen* pScreen = QApplication::primaryScreen())
             sr = pScreen->virtualGeometry();
+
         for (int i = 0; i < Wins.count(); ++i) {
             FPwin* thisWin = Wins.at(i);
 #ifdef HAS_X11
@@ -301,21 +297,15 @@ void FPsingleton::handleInfo(const QStringList& info) {
             if (isX11_)
                 whichDesktop = onWhichDesktop(id);
 #endif
-            /* if the command is issued from where a FeatherPad
-               window exists and if that window isn't minimized
-               and doesn't have a modal dialog... */
-            if (!isX11_  // always open a new tab if we aren't on x11
+            // if the command is issued from where a FeatherPad window exists and window isn't minimized with a modal dialog
+            if (!isX11_
 #ifdef HAS_X11
-                || ((whichDesktop == d
-                     /* if a window is created a moment ago, it should be
-                        on the current desktop but may not report that yet */
-                     || whichDesktop == -1)
-                    /*&& (!thisWin->isMinimized() || isWindowShaded (id))*/)
+                || (whichDesktop == d || whichDesktop == -1)
 #endif
             ) {
                 bool hasDialog = thisWin->isLocked();
                 if (!hasDialog) {
-                    QList<QDialog*> dialogs = thisWin->findChildren<QDialog*>();
+                    const QList<QDialog*> dialogs = thisWin->findChildren<QDialog*>();
                     for (int j = 0; j < dialogs.count(); ++j) {
                         if (dialogs.at(j)->isModal()) {
                             hasDialog = true;
@@ -325,22 +315,19 @@ void FPsingleton::handleInfo(const QStringList& info) {
                 }
                 if (hasDialog)
                     continue;
-                /* consider viewports too, so that if more than half of the width as well as the height
-                   of the window is inside the current viewport (of the current desktop), open a new tab */
+
+                // consider viewports too and prefer a window inside the current viewport
                 if (!isX11_ || sr.contains(thisWin->geometry().center())) {
-                    if (d >= 0)  // it may be -1 for some DEs that don't support _NET_CURRENT_DESKTOP
-                    {
-                        /* first, because of an old bug, pretend to KDE that a new window is created
-                           (without this, the next new window would open on a wrong desktop) */
+                    if (d >= 0) {
+                        // workaround for an old bug to keep desktops consistent
                         thisWin->dummyWidget->showMinimized();
                         QTimer::singleShot(0, thisWin->dummyWidget, &QWidget::hide);
                     }
 
-                    /* and then, open tab(s) in the current FeatherPad window... */
                     if (filesList.isEmpty())
                         thisWin->newTab();
                     else {
-                        bool multiple(filesList.count() > 1 || thisWin->isLoading());
+                        const bool multiple = (filesList.count() > 1 || thisWin->isLoading());
                         for (int j = 0; j < filesList.count(); ++j)
                             thisWin->newTabFromName(filesList.at(j), lineNum, posInLine, multiple);
                     }
@@ -350,19 +337,12 @@ void FPsingleton::handleInfo(const QStringList& info) {
             }
         }
     }
-    if (!found) {
-        /* ... otherwise, open a new window */
-        /*if (config_.getOpenInWindows() && !filesList.isEmpty())
-        {
-            for (const auto &file : filesList)
-                newWin (QStringList() << file, lineNum, posInLine);
-        }
-        else*/
+
+    if (!found)
         newWin(filesList, lineNum, posInLine);
-    }
 }
-/*************************/
-// Called only by D-Bus.
+
+// called only by D-Bus
 void FPsingleton::addRecentFile(const QString& file, bool recentOpened) {
     if (config_.getRecentOpened() == recentOpened)
         config_.addRecentFile(file);
