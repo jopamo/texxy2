@@ -1,43 +1,38 @@
 /*
- * Copyright (C) Pedram Pourang (aka Tsu Jan) 2017-2024 <tsujan2000@gmail.com>
- *
- * FeatherPad is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * FeatherPad is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
+ * texxy/sidepane.cpp
  */
 
 #include <QApplication>
 #include <QGridLayout>
 #include <QToolTip>
 #include <QScrollBar>
+#include <QMouseEvent>
+#include <QKeyEvent>
+#include <QHeaderView>
+#include <QFileInfo>
+#include <QMenu>
+#include <QDesktopServices>
+#include <QRegularExpression>
+#include <QUrl>
+#include <QDir>
+
 #include "sidepane.h"
 
 namespace FeatherPad {
 
 bool ListWidgetItem::operator<(const QListWidgetItem& other) const {
-    /* treat dot as a separator for a natural sorting */
+    // treat dot as a separator for a natural sorting
     const QString txt1 = text();
     const QString txt2 = other.text();
     int start1 = 0, start2 = 0;
     for (;;) {
-        int end1 = txt1.indexOf(QLatin1Char('.'), start1);
-        int end2 = txt2.indexOf(QLatin1Char('.'), start2);
-        QString part1 = end1 == -1 ? txt1.sliced(start1, txt1.size() - start1) : txt1.sliced(start1, end1 - start1);
-        QString part2 = end2 == -1 ? txt2.sliced(start2, txt2.size() - start2) : txt2.sliced(start2, end2 - start2);
+        const int end1 = txt1.indexOf(QLatin1Char('.'), start1);
+        const int end2 = txt2.indexOf(QLatin1Char('.'), start2);
+        const QString part1 = end1 == -1 ? txt1.sliced(start1) : txt1.sliced(start1, end1 - start1);
+        const QString part2 = end2 == -1 ? txt2.sliced(start2) : txt2.sliced(start2, end2 - start2);
         int comp = collator_.compare(part1, part2);
         if (comp == 0)
-            comp = part1.size() - part2.size();  // a workaround for QCollator's bug
+            comp = part1.size() - part2.size();  // workaround for QCollator edge case
         if (comp != 0)
             return comp < 0;
         if (end1 == -1 || end2 == -1)
@@ -46,14 +41,14 @@ bool ListWidgetItem::operator<(const QListWidgetItem& other) const {
         start2 = end2 + 1;
     }
 }
-/*************************/
-ListWidget::ListWidget(QWidget* parent) : QListWidget(parent) {
-    setAutoScroll(false);                                      // -> ListWidget::scrollToCurrentItem()
-    setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);  // -> ListWidget::scrollToCurrentItem()
-    setMouseTracking(true);                                    // for instant tooltips
-    locked_ = false;
 
-    /* try to have a current item as far as possible and announce it */
+/*************************/
+ListWidget::ListWidget(QWidget* parent) : QListWidget(parent), locked_(false) {
+    setAutoScroll(false);                                      // -> ListWidget::scrollToCurrentItem
+    setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);  // smooth scroll
+    setMouseTracking(true);                                    // for instant tooltips
+
+    // try to have a current item as far as possible and announce it
     connect(this, &QListWidget::currentItemChanged, [this](QListWidgetItem* current, QListWidgetItem* previous) {
         if (current == previous)
             return;
@@ -61,50 +56,49 @@ ListWidget::ListWidget(QWidget* parent) : QListWidget(parent) {
             if (count() == 0)
                 return;
             if (previous != nullptr) {
-                int prevRow = row(previous);
+                const int prevRow = row(previous);
                 if (prevRow < count() - 1)
                     setCurrentRow(prevRow + 1);
                 else if (prevRow != 0)
                     setCurrentRow(0);
             }
-            else
+            else {
                 setCurrentRow(0);
+            }
         }
         else {
             emit currentItemUpdated(current);
             scrollToCurrentItem();
-            /* this is sometimes needed because, with filtering, Qt may give the
-               focus to a hidden item (which is fine) but select a visible one */
+            // with filtering, Qt may give focus to a hidden item but select a visible one
             QTimer::singleShot(0, this, [this]() {
-                auto index = currentIndex();
+                const auto index = currentIndex();
                 if (index.isValid())
                     selectionModel()->select(index, QItemSelectionModel::ClearAndSelect);
             });
         }
     });
 }
+
 /*************************/
-// To prevent deselection by Ctrl + left click; see "qabstractitemview.cpp".
+// prevent deselection by Ctrl+LeftClick; see qabstractitemview.cpp
 QItemSelectionModel::SelectionFlags ListWidget::selectionCommand(const QModelIndex& index, const QEvent* event) const {
     Qt::KeyboardModifiers keyModifiers = event != nullptr && event->isInputEvent()
-                                             ? (static_cast<const QInputEvent*>(event))->modifiers()
+                                             ? static_cast<const QInputEvent*>(event)->modifiers()
                                              : Qt::NoModifier;
 
     if (selectionMode() == QAbstractItemView::SingleSelection) {
         if (!index.isValid())
             return QItemSelectionModel::NoUpdate;
-        if ((keyModifiers & Qt::ControlModifier) && selectionModel()->isSelected(index)) {
+        if ((keyModifiers & Qt::ControlModifier) && selectionModel()->isSelected(index))
             return QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows;
-        }
     }
     return QListWidget::selectionCommand(index, event);
 }
+
 /*************************/
-// QListView::scrollTo() doesn't work correctly when the scroll mode is per item
-// and some items are hidden or have different heights. Although the scrolling is
-// set to per-pixel by the c-tor, we use this function for the sake of certainty.
+// QListView::scrollTo has issues with hidden / variable-height items under per-item mode
 void ListWidget::scrollToCurrentItem() {
-    QModelIndex index = currentIndex();
+    const QModelIndex index = currentIndex();
     if (!index.isValid())
         return;
     const QRect rect = visualRect(index);
@@ -112,19 +106,20 @@ void ListWidget::scrollToCurrentItem() {
     if (rect.isEmpty())
         return;
 
-    bool above(rect.top() < area.top());
-    bool below(rect.bottom() > area.bottom());
+    const bool above = rect.top() < area.top();
+    const bool below = rect.bottom() > area.bottom();
     if (!above && !below)
         return;
 
     int verticalValue = verticalScrollBar()->value();
-    QRect r = rect.adjusted(-spacing(), -spacing(), spacing(), spacing());
+    const QRect r = rect.adjusted(-spacing(), -spacing(), spacing(), spacing());
     if (above)
         verticalValue += r.top();
     else
         verticalValue += qMin(r.top(), r.bottom() - area.height() + 1);
     verticalScrollBar()->setValue(verticalValue);
 }
+
 /*************************/
 void ListWidget::mousePressEvent(QMouseEvent* event) {
     if (locked_) {
@@ -133,80 +128,165 @@ void ListWidget::mousePressEvent(QMouseEvent* event) {
     }
     if (selectionMode() == QAbstractItemView::SingleSelection) {
         if (event->button() == Qt::MiddleButton) {
-            QModelIndex index = indexAt(event->position().toPoint());
-            if (QListWidgetItem* item =
-                    itemFromIndex(index))  // index is checked for its validity in QListWidget::itemFromIndex()
+            const QModelIndex index = indexAt(event->position().toPoint());
+            if (QListWidgetItem* item = itemFromIndex(index))
                 emit closeItem(item);
             else
                 emit closeSidePane();
             return;
         }
-        else if (event->button() == Qt::RightButton)
+        else if (event->button() == Qt::RightButton) {
             return;
+        }
     }
     QListWidget::mousePressEvent(event);
 }
+
 /*************************/
 void ListWidget::mouseMoveEvent(QMouseEvent* event) {
     QListWidget::mouseMoveEvent(event);
-    if (event->button() == Qt::NoButton &&
-        !(event->buttons() & Qt::LeftButton)) {  // "this" is for Wayland, when the window isn't active
+    if (event->button() == Qt::NoButton && !(event->buttons() & Qt::LeftButton)) {
         if (QListWidgetItem* item = itemAt(event->position().toPoint()))
             QToolTip::showText(event->globalPosition().toPoint(), item->toolTip(), this);
         else
             QToolTip::hideText();
     }
 }
+
 /*************************/
 QListWidgetItem* ListWidget::getItemFromIndex(const QModelIndex& index) const {
     return itemFromIndex(index);
 }
+
 /*************************/
 void ListWidget::rowsInserted(const QModelIndex& parent, int start, int end) {
     emit rowsAreInserted(start, end);
     QListView::rowsInserted(parent, start, end);
 }
+
 /*************************/
 SidePane::SidePane(QWidget* parent) : QWidget(parent) {
-    filterTimer_ = nullptr;
+    // --- container tabs ---
+    tabs_ = new QTabWidget(this);
 
-    QGridLayout* mainGrid = new QGridLayout;
-    mainGrid->setVerticalSpacing(4);
-    mainGrid->setContentsMargins(0, 0, 0, 0);
-    lw_ = new ListWidget(this);
+    // --- Tab 1: Open ---
+    QWidget* listTab = new QWidget(this);
+    auto* listGrid = new QGridLayout(listTab);
+    listGrid->setVerticalSpacing(4);
+    listGrid->setContentsMargins(0, 0, 0, 0);
+
+    lw_ = new ListWidget(listTab);
     lw_->setSortingEnabled(true);
     lw_->setSelectionMode(QAbstractItemView::SingleSelection);
     lw_->setContextMenuPolicy(Qt::CustomContextMenu);
-    mainGrid->addWidget(lw_, 0, 0);
-    le_ = new LineEdit(this);
+    listGrid->addWidget(lw_, 0, 0);
+
+    le_ = new LineEdit(listTab);
     le_->setPlaceholderText(tr("Filter..."));
-    mainGrid->addWidget(le_, 1, 0);
+    listGrid->addWidget(le_, 1, 0);
+
+    tabs_->addTab(listTab, tr("Open"));
+
+    // --- Tab 2: Files ---
+    fileTab_ = new QWidget(this);
+    auto* filesGrid = new QGridLayout(fileTab_);
+    filesGrid->setVerticalSpacing(4);
+    filesGrid->setContentsMargins(0, 0, 0, 0);
+
+    fsModel_ = new QFileSystemModel(fileTab_);
+    fsModel_->setResolveSymlinks(true);
+    fsModel_->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot);
+
+    proxy_ = new QSortFilterProxyModel(fileTab_);
+    proxy_->setRecursiveFilteringEnabled(true);
+    proxy_->setSourceModel(fsModel_);
+    proxy_->setFilterCaseSensitivity(Qt::CaseInsensitive);
+
+    tree_ = new QTreeView(fileTab_);
+    tree_->setModel(proxy_);
+    tree_->setUniformRowHeights(true);
+    tree_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    tree_->setSelectionMode(QAbstractItemView::ExtendedSelection);  // multi-select
+    tree_->setContextMenuPolicy(Qt::CustomContextMenu);
+    tree_->header()->setStretchLastSection(true);
+    // columns: 0=Name, 1=Size, 2=Type, 3=Modified
+    tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    tree_->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    tree_->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    tree_->header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    filesGrid->addWidget(tree_, 0, 0);
+
+    fileFilter_ = new LineEdit(fileTab_);
+    fileFilter_->setPlaceholderText(tr("Filter files..."));
+    filesGrid->addWidget(fileFilter_, 1, 0);
+
+    tabs_->addTab(fileTab_, tr("Files"));
+
+    // host layout
+    auto* mainGrid = new QGridLayout(this);
+    mainGrid->setContentsMargins(0, 0, 0, 0);
+    mainGrid->addWidget(tabs_, 0, 0);
     setLayout(mainGrid);
 
+    // wiring: Open tab
     connect(le_, &QLineEdit::textChanged, this, &SidePane::filter);
     connect(lw_, &ListWidget::rowsAreInserted, this, &SidePane::onRowsInserted);
     connect(lw_, &ListWidget::itemChanged, [this](QListWidgetItem* item) {
-        if (item->text().contains(le_->text(), Qt::CaseInsensitive))
-            item->setHidden(false);
-        else
-            item->setHidden(true);
+        item->setHidden(!item->text().contains(le_->text(), Qt::CaseInsensitive));
     });
-
     lw_->installEventFilter(this);
+
+    // wiring: Files tab filtering
+    connect(fileFilter_, &QLineEdit::textChanged, [this](const QString& t) {
+        QRegularExpression rx(QRegularExpression::escape(t), QRegularExpression::CaseInsensitiveOption);
+        proxy_->setFilterRegularExpression(rx);
+        if (tree_->rootIndex().isValid())
+            tree_->expandToDepth(0);
+    });
+    connect(tree_, &QTreeView::activated, this, &SidePane::onTreeActivated);
+    connect(tree_, &QTreeView::doubleClicked, this, &SidePane::onTreeActivated);
+    connect(tree_, &QTreeView::customContextMenuRequested, this, &SidePane::onTreeContextMenuRequested);
+
+    // keyboard: Enter opens all selected
+    tree_->installEventFilter(this);
+
+    // >>> CRUCIAL: set a default root so filenames appear
+    const QString defaultRoot = QDir::homePath();
+    const QModelIndex srcRoot = fsModel_->setRootPath(defaultRoot);
+    const QModelIndex proxyRoot = proxy_->mapFromSource(srcRoot);
+    tree_->setRootIndex(proxyRoot);
+    tree_->expand(proxyRoot);
+
+    // Optional: show only the Name column if you prefer a cleaner list
+    tree_->setColumnHidden(1, true);
+    tree_->setColumnHidden(2, true);
+    tree_->setColumnHidden(3, true);
+
+    // Make sure the first directory expansion happens after the model loads
+    connect(fsModel_, &QFileSystemModel::directoryLoaded, this, [this](const QString& p) {
+        const QModelIndex src = fsModel_->index(p);
+        if (!src.isValid())
+            return;
+        const QModelIndex pr = proxy_->mapFromSource(src);
+        if (pr.isValid())
+            tree_->expand(pr);
+    });
 }
+
 /*************************/
 SidePane::~SidePane() {
     if (filterTimer_) {
         disconnect(filterTimer_, &QTimer::timeout, this, &SidePane::reallyApplyFilter);
         filterTimer_->stop();
         delete filterTimer_;
+        filterTimer_ = nullptr;
     }
 }
+
 /*************************/
 bool SidePane::eventFilter(QObject* watched, QEvent* event) {
-    if (watched == lw_ &&
-        event->type() ==
-            QEvent::KeyPress) {  // when a text is typed inside the list, type it inside the filter line-edit too
+    // Open tab: type to filter
+    if (watched == lw_ && event->type() == QEvent::KeyPress) {
         if (QKeyEvent* ke = static_cast<QKeyEvent*>(event)) {
             if (ke->key() < Qt::Key_Home || ke->key() > Qt::Key_PageDown) {
                 le_->pressKey(ke);
@@ -214,31 +294,62 @@ bool SidePane::eventFilter(QObject* watched, QEvent* event) {
             }
         }
     }
+
+    // Files tab: Enter opens selected files; Space toggles folders
+    if (watched == tree_ && event->type() == QEvent::KeyPress) {
+        auto* ke = static_cast<QKeyEvent*>(event);
+        if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+            const auto sel = tree_->selectionModel()->selectedIndexes();
+            QSet<QString> opened;
+            for (const QModelIndex& idx : sel) {
+                if (idx.column() != 0)
+                    continue;  // process only the Name column
+                const QModelIndex src = proxy_->mapToSource(idx);
+                if (!src.isValid())
+                    continue;
+                if (!fsModel_->isDir(src)) {
+                    const QString path = fsModel_->filePath(src);
+                    if (!opened.contains(path)) {
+                        opened.insert(path);
+                        emit openFileRequested(path);
+                    }
+                }
+            }
+            return true;
+        }
+        if (ke->key() == Qt::Key_Space) {
+            const QModelIndex idx = tree_->currentIndex();
+            if (idx.isValid())
+                tree_->setExpanded(idx, !tree_->isExpanded(idx));
+            return true;
+        }
+    }
+
     return QWidget::eventFilter(watched, event);
 }
+
 /*************************/
 void SidePane::filter(const QString& /*text*/) {
     if (!filterTimer_) {
-        filterTimer_ = new QTimer();
+        filterTimer_ = new QTimer(this);
         filterTimer_->setSingleShot(true);
         connect(filterTimer_, &QTimer::timeout, this, &SidePane::reallyApplyFilter);
     }
     filterTimer_->start(200);
 }
+
 /*************************/
-// Simply hide items that don't contain the filter string.
+// Simply hide items that don't contain the filter string
 // Clearing items isn't an option because they are tracked
-// for their correspondence with tab pages.
+// for their correspondence with tab pages
 void SidePane::reallyApplyFilter() {
-    for (int i = lw_->count() - 1; i >= 0; --i) {  // from end to start for the scrollbar to have a correct position
+    for (int i = lw_->count() - 1; i >= 0; --i) {  // end->start keeps scrollbar sane
         QListWidgetItem* wi = lw_->item(i);
-        if (wi->text().contains(le_->text(), Qt::CaseInsensitive))
-            wi->setHidden(false);
-        else
-            wi->setHidden(true);
+        wi->setHidden(!wi->text().contains(le_->text(), Qt::CaseInsensitive));
     }
     lw_->scrollToCurrentItem();
 }
+
 /*************************/
 void SidePane::onRowsInserted(int start, int end) {
     for (int i = start; i <= end; ++i) {
@@ -246,10 +357,84 @@ void SidePane::onRowsInserted(int start, int end) {
             lw_->item(i)->setHidden(true);
     }
 }
+
 /*************************/
 void SidePane::lockPane(bool lock) {
     lw_->lockListWidget(lock);
     le_->setEnabled(!lock);
+    if (tree_)
+        tree_->setEnabled(!lock);
+    if (fileFilter_)
+        fileFilter_->setEnabled(!lock);
+}
+
+/*************************/
+void SidePane::setProjectRoot(const QString& path) {
+    const QFileInfo fi(path);
+    const QString root = fi.exists() ? fi.canonicalFilePath() : path;
+    const QModelIndex srcRoot = fsModel_->setRootPath(root);
+    const QModelIndex proxyRoot = proxy_->mapFromSource(srcRoot);
+    tree_->setRootIndex(proxyRoot);
+    tree_->expand(proxyRoot);
+}
+
+/*************************/
+void SidePane::revealFile(const QString& path) {
+    const QFileInfo fi(path);
+    if (!fi.exists())
+        return;
+    const QModelIndex src = fsModel_->index(fi.canonicalFilePath());
+    if (!src.isValid())
+        return;
+    const QModelIndex idx = proxy_->mapFromSource(src);
+    if (!idx.isValid())
+        return;
+    tree_->expand(proxy_->parent(idx));
+    tree_->scrollTo(idx, QAbstractItemView::PositionAtCenter);
+    tree_->setCurrentIndex(idx);
+}
+
+/*************************/
+void SidePane::onTreeActivated(const QModelIndex& proxyIndex) {
+    const QModelIndex src = proxy_->mapToSource(proxyIndex);
+    if (!src.isValid())
+        return;
+    if (fsModel_->isDir(src)) {
+        tree_->setExpanded(proxyIndex, !tree_->isExpanded(proxyIndex));
+    }
+    else {
+        emit openFileRequested(fsModel_->filePath(src));
+    }
+}
+
+/*************************/
+void SidePane::onTreeContextMenuRequested(const QPoint& pos) {
+    const QModelIndex idx = tree_->indexAt(pos);
+    if (!idx.isValid())
+        return;
+    const QModelIndex src = proxy_->mapToSource(idx);
+    const QString path = fsModel_->filePath(src);
+    const bool isDir = fsModel_->isDir(src);
+
+    QMenu menu(this);
+    QAction* openAct = menu.addAction(tr("Open"));
+    QAction* rootAct = isDir ? menu.addAction(tr("Set As Root")) : nullptr;
+    QAction* revealAct = menu.addAction(tr("Reveal In File Manager"));
+
+    QAction* chosen = menu.exec(tree_->viewport()->mapToGlobal(pos));
+    if (!chosen)
+        return;
+
+    if (chosen == openAct && !isDir) {
+        emit openFileRequested(path);
+    }
+    else if (chosen == rootAct) {
+        setProjectRoot(path);
+    }
+    else if (chosen == revealAct) {
+        const QString toOpen = isDir ? path : QFileInfo(path).absolutePath();
+        QDesktopServices::openUrl(QUrl::fromLocalFile(toOpen));
+    }
 }
 
 }  // namespace FeatherPad

@@ -1,20 +1,5 @@
 /*
- * Copyright (C) Pedram Pourang (aka Tsu Jan) 2017-2020 <tsujan2000@gmail.com>
- *
- * FeatherPad is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * FeatherPad is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
+ * texxy/sidepane.h
  */
 
 #ifndef SIDEPANE_H
@@ -24,6 +9,10 @@
 #include <QTimer>
 #include <QCollator>
 #include <QListWidget>
+#include <QTabWidget>
+#include <QTreeView>
+#include <QFileSystemModel>
+#include <QSortFilterProxyModel>
 #include "lineedit.h"
 
 namespace FeatherPad {
@@ -83,24 +72,48 @@ class SidePane : public QWidget {
     Q_OBJECT
    public:
     SidePane(QWidget* parent = nullptr);
-    ~SidePane();
+    ~SidePane() override;
 
     ListWidget* listWidget() const { return lw_; }
 
     void lockPane(bool lock);
 
+    // Files tab API
+    void setProjectRoot(const QString& path);  // set the root directory shown in Files tab
+    void revealFile(const QString& path);      // select & reveal a file in the tree
+
+   signals:
+    // Emitted when the user requests to open a file (or many; emitted once per file)
+    void openFileRequested(const QString& path);
+
    protected:
-    bool eventFilter(QObject* watched, QEvent* event);
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
    private slots:
+    // Open tab (existing behavior)
     void filter(const QString&);
     void reallyApplyFilter();
     void onRowsInserted(int start, int end);
 
+    // Files tab
+    void onTreeActivated(const QModelIndex& proxyIndex);
+    void onTreeContextMenuRequested(const QPoint& pos);
+
    private:
-    ListWidget* lw_;
-    LineEdit* le_;
-    QTimer* filterTimer_;
+    // Open tab widgets
+    ListWidget* lw_ = nullptr;
+    LineEdit* le_ = nullptr;
+    QTimer* filterTimer_ = nullptr;
+
+    // Container
+    QTabWidget* tabs_ = nullptr;
+
+    // Files tab widgets
+    QWidget* fileTab_ = nullptr;
+    QTreeView* tree_ = nullptr;
+    LineEdit* fileFilter_ = nullptr;
+    QFileSystemModel* fsModel_ = nullptr;
+    QSortFilterProxyModel* proxy_ = nullptr;
 };
 
 }  // namespace FeatherPad

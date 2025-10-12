@@ -15,7 +15,7 @@
 
 namespace FeatherPad {
 
-// prevent redundant writes when a value hasn't changed
+// Prevent redundant writings! (Why does QSettings write to the config file when no setting is changed?)
 class Settings : public QSettings {
     Q_OBJECT
    public:
@@ -24,7 +24,9 @@ class Settings : public QSettings {
     Settings(const QString& fileName, QSettings::Format format, QObject* parent = nullptr)
         : QSettings(fileName, format, parent) {}
 
-    void setValue(const QString& key, const QVariant& v) override {
+    // QSettings::setValue is not virtual in Qt, so do not mark this as override
+    // this wrapper skips writes when the value is unchanged
+    void setValue(const QString& key, const QVariant& v) {
         if (value(key) == v)
             return;
         QSettings::setValue(key, v);
@@ -171,12 +173,12 @@ class Config {
 
     bool getSkipNonText() const { return skipNonText_; }
     void setSkipNonText(bool skip) { skipNonText_ = skip; }
-
+    /*************************/
     bool getExecuteScripts() const { return executeScripts_; }
     void setExecuteScripts(bool execute) { executeScripts_ = execute; }
     QString getExecuteCommand() const { return executeCommand_; }
     void setExecuteCommand(const QString& command) { executeCommand_ = command; }
-
+    /*************************/
     bool getAppendEmptyLine() const { return appendEmptyLine_; }
     void setAppendEmptyLine(bool append) { appendEmptyLine_ = append; }
 
@@ -188,14 +190,14 @@ class Config {
 
     bool getNativeDialog() const { return nativeDialog_; }
     void setNativeDialog(bool native) { nativeDialog_ = native; }
-
+    /*************************/
     bool getRecentOpened() const { return recentOpened_; }
     void setRecentOpened(bool opened) { recentOpened_ = opened; }
 
     QStringList getRecentFiles() const { return recentFiles_; }
-    void clearRecentFiles() { recentFiles_.clear(); }
+    void clearRecentFiles() { recentFiles_ = QStringList(); }
     void addRecentFile(const QString& file);
-
+    /*************************/
     QHash<QString, QString> customShortcutActions() const { return actions_; }
     void setActionShortcut(const QString& action, const QString& shortcut) { actions_.insert(action, shortcut); }
     void removeShortcut(const QString& action) {
@@ -203,13 +205,13 @@ class Config {
         removedActions_ << action;
     }
 
-    bool hasReservedShortcuts() const { return !reservedShortcuts_.isEmpty(); }
+    bool hasReservedShortcuts() const { return (!reservedShortcuts_.isEmpty()); }
     QStringList reservedShortcuts() const { return reservedShortcuts_; }
     void setReservedShortcuts(const QStringList& s) { reservedShortcuts_ = s; }
-
+    /*************************/
     bool getInertialScrolling() const { return inertialScrolling_; }
     void setInertialScrolling(bool inertial) { inertialScrolling_ = inertial; }
-
+    /*************************/
     QHash<QString, QVariant> savedCursorPos() {
         readCursorPos();
         return cursorPos_;
@@ -231,7 +233,7 @@ class Config {
         removedCursorPos_.append(cursorPos_.keys());
         cursorPos_.clear();
     }
-
+    /*************************/
     bool getSaveLastFilesList() const { return saveLastFilesList_; }
     void setSaveLastFilesList(bool saveList) { saveLastFilesList_ = saveList; }
 
@@ -240,39 +242,39 @@ class Config {
         return lasFilesCursorPos_;
     }
     void setLastFileCursorPos(const QHash<QString, QVariant>& curPos) { lasFilesCursorPos_ = curPos; }
-
+    /*************************/
     bool getAutoSave() const { return autoSave_; }
     void setAutoSave(bool as) { autoSave_ = as; }
     int getAutoSaveInterval() const { return autoSaveInterval_; }
     void setAutoSaveInterval(int i) { autoSaveInterval_ = i; }
-
+    /*************************/
     bool getSaveUnmodified() const { return saveUnmodified_; }
     void setSaveUnmodified(bool save) { saveUnmodified_ = save; }
-
+    /*************************/
     bool getSelectionHighlighting() const { return selectionHighlighting_; }
     void setSelectionHighlighting(bool enable) { selectionHighlighting_ = enable; }
-
+    /*************************/
     bool getPastePaths() const { return pastePaths_; }
     void setPastePaths(bool pastPaths) { pastePaths_ = pastPaths; }
-
+    /*************************/
     bool getCloseWithLastTab() const { return closeWithLastTab_; }
     void setCloseWithLastTab(bool close) { closeWithLastTab_ = close; }
-
+    /*************************/
     bool getSharedSearchHistory() const { return sharedSearchHistory_; }
     void setSharedSearchHistory(bool share) { sharedSearchHistory_ = share; }
-
+    /*************************/
     bool getDisableMenubarAccel() const { return disableMenubarAccel_; }
     void setDisableMenubarAccel(bool disable) { disableMenubarAccel_ = disable; }
-
+    /*************************/
     bool getSysIcons() const { return sysIcons_; }
     void setSysIcons(bool sysIcons) { sysIcons_ = sysIcons; }
-
+    /*************************/
     QString getDictPath() const { return dictPath_; }
     void setDictPath(const QString& dictPath) { dictPath_ = dictPath; }
 
     bool getSpellCheckFromStart() const { return spellCheckFromStart_; }
     void setSpellCheckFromStart(bool fromStart) { spellCheckFromStart_ = fromStart; }
-
+    /*************************/
     QHash<QString, QColor> lightSyntaxColors() const { return defaultLightSyntaxColors_; }
     QHash<QString, QColor> darkSyntaxColors() const { return defaultDarkSyntaxColors_; }
 
@@ -296,7 +298,7 @@ class Config {
     QString validatedShortcut(const QVariant v, bool* isValid);
     void readCursorPos();
     void writeCursorPos();
-    void setDefaultSyntaxColors();  // fixed name to match implementation
+    void setDfaultSyntaxColors();
     void writeSyntaxColors();
 
     bool remSize_, remPos_, remSplitterPos_, noToolbar_, noMenubar_, menubarTitle_, hideSearchbar_, showStatusbar_,
@@ -307,8 +309,7 @@ class Config {
         saveUnmodified_, selectionHighlighting_, pastePaths_, closeWithLastTab_, sharedSearchHistory_,
         disableMenubarAccel_, sysIcons_;
     int vLineDistance_, tabPosition_, maxSHSize_, lightBgColorValue_, darkBgColorValue_, recentFilesNumber_,
-        curRecentFilesNumber_,  // the start value of recentFilesNumber_ -- fixed during a session
-        autoSaveInterval_, textTabSize_;
+        curRecentFilesNumber_, autoSaveInterval_, textTabSize_;
     QString dateFormat_;
     QSize winSize_, startSize_, prefSize_;
     QPoint winPos_;
@@ -322,8 +323,8 @@ class Config {
     QStringList removedActions_, reservedShortcuts_;
 
     QHash<QString, QVariant> cursorPos_;
-    QStringList removedCursorPos_;  // used only internally for the clean-up
-    bool cursorPosRetrieved_;       // used only internally for reading once
+    QStringList removedCursorPos_;
+    bool cursorPosRetrieved_;
 
     QHash<QString, QVariant> lasFilesCursorPos_;
 
