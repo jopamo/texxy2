@@ -1,20 +1,5 @@
 /*
- * Copyright (C) Pedram Pourang (aka Tsu Jan) 2014-2024 <tsujan2000@gmail.com>
- *
- * FeatherPad is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * FeatherPad is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
+ * texxy/tabbar.cpp
  */
 
 #include <QPointer>
@@ -24,11 +9,15 @@
 #include <QIcon>
 #include <QApplication>
 #include <QToolTip>
+#include <QCursor>
 #include "tabbar.h"
 
 namespace FeatherPad {
 
-const char* TabBar::tabDropped = "_fpad_tab_dropped";
+static constexpr const char* kTabDroppedProp = "_fpad_tab_dropped"  // property set by FPwin::dropEvent when a tab drop is accepted
+static constexpr const char* kMimeType = "application/featherpad-tab"  // mime type for dragged tab index
+
+const char* TabBar::tabDropped = kTabDroppedProp;
 
 TabBar::TabBar(QWidget* parent) : QTabBar(parent) {
     hideSingle_ = false;
@@ -37,7 +26,7 @@ TabBar::TabBar(QWidget* parent) : QTabBar(parent) {
     noTabDND_ = false;
 
     setMouseTracking(true);
-    setElideMode(Qt::ElideMiddle);  // works with minimumTabSizeHint()
+    setElideMode(Qt::ElideMiddle)  // works with minimumTabSizeHint
 }
 /*************************/
 void TabBar::mousePressEvent(QMouseEvent* event) {
@@ -86,40 +75,28 @@ void TabBar::mouseMoveEvent(QMouseEvent* event) {
             return;
         }
 
-        /*
-           NOTE:
+        // detach or drop the tab only after finishing the drag and drop to keep the tabbar stable
 
-           To be on the safe side (especially under Wayland), we detach or drop the tab
-           only after finishing the DND; see "FPwin::dropEvent()" and the queued
-           connection of "tabDetached()" in "fpwin.cpp".
-
-           Also, it's important to release the mouse after DND but before tab removal;
-           otherwise, the tabbar might not be updated properly. That's done in
-           "FPwin::detachTab" and "FPwin::dropTab".
-        */
-
-        QPointer<QDrag> drag = new QDrag(this);
+        QDrag* drag = new QDrag(this);
         QMimeData* mimeData = new QMimeData;
-        QByteArray array = QString::number(index).toUtf8();
-        mimeData->setData("application/featherpad-tab", array);
+        QByteArray array = QByteArray::number(index);  // avoid QString allocation
+        mimeData->setData(kMimeType, array);
         drag->setMimeData(mimeData);
-        QPixmap px = QIcon(":icons/tab.svg").pixmap(22, 22);
-        drag->setPixmap(px);
-        drag->setHotSpot(QPoint(px.width() / 2, px.height()));
+
+        static QPixmap s_px = QIcon(":icons/tab.svg").pixmap(22, 22);  // cache pixmap for speed
+        drag->setPixmap(s_px);
+        drag->setHotSpot(QPoint(s_px.width() / 2, s_px.height()));
+
         int N = count();
         Qt::DropAction dragged = drag->exec(Qt::MoveAction);
         if (dragged != Qt::MoveAction) {
-            /* The drop hasn't been accepted (by any FeatherPad window).
-               The tab will be detached if there's more than one tab. */
+            // drop not accepted by a FeatherPad window, detach if there is more than one tab
             if (N > 1)
                 emit tabDetached();
             else
                 finishMouseMoveEvent();
-        }
-        else {
-            /* WARNING: Since another app can also accept this drop, we check
-               the object property "_fpad_tab_dropped" (set by "FPwin::dropEvent")
-               and detach the tab if it's missing. */
+        } else {
+            // another app may accept the drop, check our property flag and detach if missing
             if (property(TabBar::tabDropped).toBool())
                 setProperty(TabBar::tabDropped, QVariant());  // reset
             else {
@@ -131,20 +108,25 @@ void TabBar::mouseMoveEvent(QMouseEvent* event) {
         }
         event->accept();
         drag->deleteLater();
-    }
-    else {  // "this" is for Wayland, when the window isn't active
+    } else {
         QTabBar::mouseMoveEvent(event);
         int index = tabAt(event->position().toPoint());
-        if (index > -1)
-            /* WARNING: For tabbars, event->globalPosition() may return a totally
-                        wrong position with Qt6. */
-            QToolTip::showText(QCursor::pos(), tabToolTip(index), this);
-        else
-            QToolTip::hideText();
+        static int lastTipIndex = -1;  // reduces redundant tooltip updates
+        if (index > -1) {
+            if (index != lastTipIndex) {
+                lastTipIndex = index;
+                QToolTip::showText(QCursor::pos(), tabToolTip(index), this);
+            }
+        } else {
+            if (lastTipIndex != -1) {
+                lastTipIndex = -1;
+                QToolTip::hideText();
+            }
+        }
     }
 }
 /*************************/
-// Don't show tooltip with setTabToolTip().
+// Don't show tooltip with setTabToolTip()
 bool TabBar::event(QEvent* event) {
 #ifndef QT_NO_TOOLTIP
     if (event->type() == QEvent::ToolTip)
@@ -181,19 +163,17 @@ void TabBar::finishMouseMoveEvent() {
     dragStarted_ = false;
     dragStartPosition_ = QPoint();
 
+    // synthesize a benign move to flush any hover states
     QMouseEvent finishingEvent(QEvent::MouseMove, QPointF(),
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 4, 0))
                                QCursor::pos(),
-#endif
                                Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     mouseMoveEvent(&finishingEvent);
 }
 /*************************/
 void TabBar::releaseMouse() {
+    // synthesize a release before any tab removal to keep visuals in sync
     QMouseEvent releasingEvent(QEvent::MouseButtonRelease, QPointF(),
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 4, 0))
                                QCursor::pos(),
-#endif
                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     mouseReleaseEvent(&releasingEvent);
 }
@@ -211,7 +191,7 @@ QSize TabBar::tabSizeHint(int index) const {
 }
 /*************************/
 // Set minimumTabSizeHint to tabSizeHint
-// to keep tabs from shrinking with eliding.
+// to keep tabs from shrinking with eliding
 QSize TabBar::minimumTabSizeHint(int index) const {
     return tabSizeHint(index);
 }
