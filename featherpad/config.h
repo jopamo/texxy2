@@ -1,20 +1,5 @@
 /*
- * Copyright (C) Pedram Pourang (aka Tsu Jan) 2014-2021 <tsujan2000@gmail.com>
- *
- * FeatherPad is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * FeatherPad is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
+ * texxy/config.h
  */
 
 #ifndef CONFIG_H
@@ -30,16 +15,16 @@
 
 namespace FeatherPad {
 
-// Prevent redundant writings! (Why does QSettings write to the config file when no setting is changed?)
+// prevent redundant writes when a value hasn't changed
 class Settings : public QSettings {
     Q_OBJECT
-   public:
+public:
     Settings(const QString& organization, const QString& application = QString(), QObject* parent = nullptr)
         : QSettings(organization, application, parent) {}
     Settings(const QString& fileName, QSettings::Format format, QObject* parent = nullptr)
         : QSettings(fileName, format, parent) {}
 
-    void setValue(const QString& key, const QVariant& v) {
+    void setValue(const QString& key, const QVariant& v) override {
         if (value(key) == v)
             return;
         QSettings::setValue(key, v);
@@ -47,7 +32,7 @@ class Settings : public QSettings {
 };
 
 class Config {
-   public:
+public:
     Config();
     ~Config();
 
@@ -186,12 +171,12 @@ class Config {
 
     bool getSkipNonText() const { return skipNonText_; }
     void setSkipNonText(bool skip) { skipNonText_ = skip; }
-    /*************************/
+
     bool getExecuteScripts() const { return executeScripts_; }
     void setExecuteScripts(bool execute) { executeScripts_ = execute; }
     QString getExecuteCommand() const { return executeCommand_; }
     void setExecuteCommand(const QString& command) { executeCommand_ = command; }
-    /*************************/
+
     bool getAppendEmptyLine() const { return appendEmptyLine_; }
     void setAppendEmptyLine(bool append) { appendEmptyLine_ = append; }
 
@@ -203,14 +188,14 @@ class Config {
 
     bool getNativeDialog() const { return nativeDialog_; }
     void setNativeDialog(bool native) { nativeDialog_ = native; }
-    /*************************/
+
     bool getRecentOpened() const { return recentOpened_; }
     void setRecentOpened(bool opened) { recentOpened_ = opened; }
 
     QStringList getRecentFiles() const { return recentFiles_; }
-    void clearRecentFiles() { recentFiles_ = QStringList(); }
+    void clearRecentFiles() { recentFiles_.clear(); }
     void addRecentFile(const QString& file);
-    /*************************/
+
     QHash<QString, QString> customShortcutActions() const { return actions_; }
     void setActionShortcut(const QString& action, const QString& shortcut) { actions_.insert(action, shortcut); }
     void removeShortcut(const QString& action) {
@@ -218,13 +203,13 @@ class Config {
         removedActions_ << action;
     }
 
-    bool hasReservedShortcuts() const { return (!reservedShortcuts_.isEmpty()); }
+    bool hasReservedShortcuts() const { return !reservedShortcuts_.isEmpty(); }
     QStringList reservedShortcuts() const { return reservedShortcuts_; }
     void setReservedShortcuts(const QStringList& s) { reservedShortcuts_ = s; }
-    /*************************/
+
     bool getInertialScrolling() const { return inertialScrolling_; }
     void setInertialScrolling(bool inertial) { inertialScrolling_ = inertial; }
-    /*************************/
+
     QHash<QString, QVariant> savedCursorPos() {
         readCursorPos();
         return cursorPos_;
@@ -246,7 +231,7 @@ class Config {
         removedCursorPos_.append(cursorPos_.keys());
         cursorPos_.clear();
     }
-    /*************************/
+
     bool getSaveLastFilesList() const { return saveLastFilesList_; }
     void setSaveLastFilesList(bool saveList) { saveLastFilesList_ = saveList; }
 
@@ -255,39 +240,39 @@ class Config {
         return lasFilesCursorPos_;
     }
     void setLastFileCursorPos(const QHash<QString, QVariant>& curPos) { lasFilesCursorPos_ = curPos; }
-    /*************************/
+
     bool getAutoSave() const { return autoSave_; }
     void setAutoSave(bool as) { autoSave_ = as; }
     int getAutoSaveInterval() const { return autoSaveInterval_; }
     void setAutoSaveInterval(int i) { autoSaveInterval_ = i; }
-    /*************************/
+
     bool getSaveUnmodified() const { return saveUnmodified_; }
     void setSaveUnmodified(bool save) { saveUnmodified_ = save; }
-    /*************************/
+
     bool getSelectionHighlighting() const { return selectionHighlighting_; }
     void setSelectionHighlighting(bool enable) { selectionHighlighting_ = enable; }
-    /*************************/
+
     bool getPastePaths() const { return pastePaths_; }
     void setPastePaths(bool pastPaths) { pastePaths_ = pastPaths; }
-    /*************************/
+
     bool getCloseWithLastTab() const { return closeWithLastTab_; }
     void setCloseWithLastTab(bool close) { closeWithLastTab_ = close; }
-    /*************************/
+
     bool getSharedSearchHistory() const { return sharedSearchHistory_; }
     void setSharedSearchHistory(bool share) { sharedSearchHistory_ = share; }
-    /*************************/
+
     bool getDisableMenubarAccel() const { return disableMenubarAccel_; }
     void setDisableMenubarAccel(bool disable) { disableMenubarAccel_ = disable; }
-    /*************************/
+
     bool getSysIcons() const { return sysIcons_; }
     void setSysIcons(bool sysIcons) { sysIcons_ = sysIcons; }
-    /*************************/
+
     QString getDictPath() const { return dictPath_; }
     void setDictPath(const QString& dictPath) { dictPath_ = dictPath; }
 
     bool getSpellCheckFromStart() const { return spellCheckFromStart_; }
     void setSpellCheckFromStart(bool fromStart) { spellCheckFromStart_ = fromStart; }
-    /*************************/
+
     QHash<QString, QColor> lightSyntaxColors() const { return defaultLightSyntaxColors_; }
     QHash<QString, QColor> darkSyntaxColors() const { return defaultDarkSyntaxColors_; }
 
@@ -307,11 +292,11 @@ class Config {
 
     void readSyntaxColors();
 
-   private:
+private:
     QString validatedShortcut(const QVariant v, bool* isValid);
     void readCursorPos();
     void writeCursorPos();
-    void setDfaultSyntaxColors();
+    void setDefaultSyntaxColors(); // fixed name to match implementation
     void writeSyntaxColors();
 
     bool remSize_, remPos_, remSplitterPos_, noToolbar_, noMenubar_, menubarTitle_, hideSearchbar_, showStatusbar_,
