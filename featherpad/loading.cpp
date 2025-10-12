@@ -1,28 +1,114 @@
 /*
- * Copyright (C) Pedram Pourang (aka Tsu Jan) 2014-2024 <tsujan2000@gmail.com>
- *
- * FeatherPad is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * FeatherPad is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
- */
+  texxy/loading.cpp
+*/
 
 #include "loading.h"
 #include "encoding.h"
+
 #include <QFile>
 #include <QStringDecoder>
+#include <QtGlobal>
 
 namespace FeatherPad {
+
+static inline void appendHugeLineNotice(QString& out) {
+    // same message as original path but appended after streaming decode
+    static const QLatin1String msg("    HUGE LINE TRUNCATED: NO LINE WITH MORE THAN 500000 CHARACTERS");
+    out += msg;
+}
+
+// scan buffer to
+//  - detect presence of NULs
+//  - compute first huge-line cutoff index if any
+//  - keep simple UTF-16/32 heuristics from the original logic
+// returns cutoff index or -1 if no cutoff is needed
+struct ScanResult {
+    bool hasNull = false;
+    bool likelyUtf16 = false;
+    bool likelyUtf32 = false;
+    qint64 cutoff = -1;
+};
+
+static inline ScanResult scanBuffer(const uchar* begin, const uchar* end, bool enforced) {
+    ScanResult r;
+    if (!begin || begin >= end)
+        return r;
+
+    const qint64 len = end - begin;
+
+    // peek first up to 4 bytes for UTF-16/32 heuristics
+    uchar C[4] = {0, 0, 0, 0};
+    const int peeks = static_cast<int>(qMin<qint64>(4, len));
+    for (int i = 0; i < peeks; ++i) {
+        C[i] = begin[i];
+        if (C[i] == 0x00)
+            r.hasNull = true;
+    }
+
+    if (!enforced) {
+        if (peeks == 2 && ((C[0] != 0x00 && C[1] == 0x00) || (C[0] == 0x00 && C[1] != 0x00)))
+            r.likelyUtf16 = true; // single 2-byte char with alternating NUL suggests UTF-16
+
+        if (peeks == 4) {
+            const bool bom16le = (C[0] == 0xFF && C[1] == 0xFE);
+            const bool bom16be = (C[0] == 0xFE && C[1] == 0xFF);
+            const bool le16pat = (C[0] != 0x00 && C[1] == 0x00 && C[2] != 0x00 && C[3] == 0x00);
+            const bool be16pat = (C[0] == 0x00 && C[1] != 0x00 && C[2] == 0x00 && C[3] != 0x00);
+            const bool le32pat = (C[0] != 0x00 && C[1] != 0x00 && C[2] == 0x00 && C[3] == 0x00);
+            const bool be32pat = (C[0] == 0x00 && C[1] == 0x00 && C[2] != 0x00 && C[3] != 0x00);
+
+            if (r.hasNull && (le16pat || be16pat || bom16le || bom16be))
+                r.likelyUtf16 = true;
+            else if (r.hasNull && (le32pat || be32pat))
+                r.likelyUtf32 = true;
+        }
+
+        // if BOM looks like UTF-16 but we only saw 2 bytes, try to confirm NUL presence
+        if (peeks == 2 && !r.likelyUtf16 && ((C[0] == 0xFF && C[1] == 0xFE) || (C[0] == 0xFE && C[1] == 0xFF))) {
+            const int extra = static_cast<int>(qMin<qint64>(6, len - 2));
+            for (int i = 0; i < extra; ++i)
+                r.hasNull |= (begin[2 + i] == 0x00);
+            if (r.hasNull)
+                r.likelyUtf16 = true;
+        }
+    }
+
+    // compute huge-line cutoff in a single walk without building a copy
+    // thresholds match original logic
+    const int thresholdText = 500000;
+    const int thresholdWide = 500004; // multiple of 4
+    int lineLen = 0;
+    const int threshold = (enforced || r.likelyUtf16 || r.likelyUtf32) ? thresholdWide : thresholdText;
+
+    // if we already peeked into the first bytes, seed line length
+    lineLen = peeks;
+
+    // include the peeked bytes in cutoff consideration
+    for (qint64 i = 0; i < peeks; ++i) {
+        const char c = static_cast<char>(C[i]);
+        if (c == '\n' || c == '\r')
+            lineLen = 0;
+        if (lineLen > threshold && r.cutoff < 0)
+            r.cutoff = i; // cutoff occurs right before this byte
+    }
+
+    // continue scanning from after the peek
+    for (const uchar* p = begin + peeks; p < end; ++p) {
+        const char c = static_cast<char>(*p);
+        r.hasNull |= (c == '\0');
+        if (c == '\n' || c == '\r')
+            lineLen = 0;
+        ++lineLen;
+
+        if (lineLen > threshold && r.cutoff < 0) {
+            // cutoff index is number of bytes to keep from start
+            r.cutoff = p - begin - (enforced || r.likelyUtf16 || r.likelyUtf32 ? ((lineLen - threshold) % 4) : 0);
+            break; // first cutoff position is enough
+        }
+    }
+
+    return r;
+}
 
 Loading::Loading(const QString& fname,
                  const QString& charset,
@@ -39,19 +125,18 @@ Loading::Loading(const QString& fname,
       forceUneditable_(forceUneditable),
       multiple_(multiple),
       skipNonText_(true) {}
-/*************************/
+
 Loading::~Loading() {}
-/*************************/
+
 void Loading::run() {
     if (!QFile::exists(fname_)) {
-        emit completed(QString(), fname_, charset_.isEmpty() ? "UTF-8" : charset_, false, false, 0, 0, false,
-                       multiple_);
+        emit completed(QString(), fname_, charset_.isEmpty() ? "UTF-8" : charset_, false, false, 0, 0, false, multiple_);
         return;
     }
 
     QFile file(fname_);
-    if (file.size() > 100 * 1024 * 1024)  // don't open files with sizes > 100 Mib
-    {
+    const qint64 sizeLimit = 100LL * 1024 * 1024; // 100 MiB guard
+    if (file.size() > sizeLimit) {
         emit completed(QString(), fname_);
         return;
     }
@@ -60,140 +145,86 @@ void Loading::run() {
         return;
     }
 
-    /* read the file character by character to know
-       if it includes null (and because that's faster) */
-    bool enforced = !charset_.isEmpty();
-    bool hasNull = false;
-    QByteArray data;
-    char c;
-    qint64 charSize = sizeof(char);  // 1
-    int num = 0;
-    if (enforced) {  // no need to check for the null character here
-        while (file.read(&c, charSize) > 0) {
-            if (c == '\n' || c == '\r')
-                num = 0;
-            if (num < 500004)  // a multiple of 4 (for UTF-16/32)
-                data.append(c);
-            else
-                forceUneditable_ = true;
-            ++num;
-        }
-    }
-    else {
-        unsigned char C[4];
-        /* checking 4 bytes is enough to guess
-           whether the encoding is UTF-16 or UTF-32 */
-        while (num < 4 && file.read(&c, charSize) > 0) {
-            data.append(c);
-            if (c == '\0')
-                hasNull = true;
-            C[num] = static_cast<unsigned char>(c);
-            ++num;
-        }
-        if (num == 2 && ((C[0] != '\0' && C[1] == '\0') || (C[0] == '\0' && C[1] != '\0')))
-            charset_ = "UTF-16";  // single character
-        else if (num == 4) {
-            bool readMore(true);
-            if (hasNull) {
-                if ((C[0] == 0xFF && C[1] == 0xFE && C[2] != '\0' && C[3] == '\0')      // le
-                    || (C[0] == 0xFE && C[1] == 0xFF && C[2] == '\0' && C[3] != '\0')   // be
-                    || (C[0] != '\0' && C[1] == '\0' && C[2] != '\0' && C[3] == '\0')   // le
-                    || (C[0] == '\0' && C[1] != '\0' && C[2] == '\0' && C[3] != '\0'))  // be
-                {
-                    charset_ = "UTF-16";
-                }
-                /*else if ((C[0] == 0xFF && C[1] == 0xFE && C[2] == '\0' && C[3] == '\0')
-                          || (C[0] == '\0' && C[1] == '\0' && C[2] == 0xFE && C[3] == 0xFF))*/
-                else if ((C[0] != '\0' && C[1] != '\0' && C[2] == '\0' && C[3] == '\0')      // le
-                         || (C[0] == '\0' && C[1] == '\0' && C[2] != '\0' && C[3] != '\0'))  // be
-                {
-                    charset_ = "UTF-32";
-                }
-            }
-            else if ((C[0] == 0xFF && C[1] == 0xFE) ||
-                     (C[0] == 0xFE && C[1] == 0xFF)) {  // check special cases of UTF-16
-                while (num < 8 && file.read(&c, charSize) > 0) {
-                    data.append(c);
-                    if (c == '\0')
-                        hasNull = true;
-                    ++num;
-                }
-                if (hasNull && (num == 6 || num == 8))
-                    charset_ = "UTF-16";
-                if (num < 8)
-                    readMore = false;
-            }
+    const qint64 fsz = file.size();
+    const uchar* map = fsz ? file.map(0, fsz) : nullptr;
 
-            if (readMore) {
-                /* reading may still be possible */
-                if (charset_.isEmpty() && !hasNull) {
-                    ++num;  // 4 or 8 characters are already read
-                    while (file.read(&c, charSize) > 0) {
-                        if (c == '\0') {
-                            if (!hasNull) {
-                                if (skipNonText_) {
-                                    file.close();
-                                    emit completed(QString(), QString(),
-                                                   "UTF-8");  // shows that a non-text file is skipped
-                                    return;
-                                }
-                                hasNull = true;
-                            }
-                        }
-                        else if (c == '\n' || c == '\r')
-                            num = 0;
-                        if (num <= 500000)
-                            data.append(c);
-                        else if (num == 500001) {
-                            data += QByteArray("    HUGE LINE TRUNCATED: NO LINE WITH MORE THAN 500000 CHARACTERS");
-                            forceUneditable_ = true;
-                        }
-                        ++num;
-                    }
-                }
-                else {  // the meaning of null characters was determined before
-                    if (skipNonText_ && hasNull && charset_.isEmpty()) {
-                        file.close();
-                        emit completed(QString(), QString(), "UTF-8");
-                        return;
-                    }
-                    num = 0;
-                    while (file.read(&c, charSize) > 0) {
-                        if (c == '\n' || c == '\r')
-                            num = 0;
-                        if (num < 500004)  // a multiple of 4 (for UTF-16/32)
-                            data.append(c);
-                        else
-                            forceUneditable_ = true;
-                        ++num;
-                    }
-                }
-            }
-        }
+    QByteArray fallback;
+    if (!map) {
+        // fall back to a single read into a non-owning QByteArray view to avoid per-byte appends
+        fallback = file.readAll();
+        map = reinterpret_cast<const uchar*>(fallback.constData());
     }
-    file.close();
-    if (skipNonText_ && hasNull && charset_.isEmpty()) {
+
+    const uchar* const begin = map;
+    const uchar* const end = map + (map ? (fallback.isEmpty() ? fsz : fallback.size()) : 0);
+
+    const bool enforced = !charset_.isEmpty();
+
+    // fast scan to determine nulls, cutoff, and wide enc guesses
+    const ScanResult scan = scanBuffer(begin, end, enforced);
+
+    // skip non-text if configured and nulls found with no charset decision
+    if (!enforced && skipNonText_ && scan.hasNull && charset_.isEmpty()) {
+        file.close();
         emit completed(QString(), QString(), "UTF-8");
         return;
     }
 
+    // decide charset
     if (charset_.isEmpty()) {
-        if (hasNull) {
+        if (scan.hasNull) {
+            // treat as non-text but still open as UTF-8 like original
             forceUneditable_ = true;
-            charset_ = "UTF-8";  // always open non-text files as UTF-8
+            charset_ = "UTF-8";
+        } else if (scan.likelyUtf16) {
+            charset_ = "UTF-16";
+        } else if (scan.likelyUtf32) {
+            charset_ = "UTF-32";
+        } else {
+            // zero-copy view into mapped data for detection to avoid copying the whole file
+            const QByteArray raw = QByteArray::fromRawData(reinterpret_cast<const char*>(begin), static_cast<int>(end - begin));
+            charset_ = detectCharset(raw);
         }
-        else
-            charset_ = detectCharset(data);
     }
 
-    /* Legacy encodings aren't supported by Qt >= Qt6. */
-    auto decoder = QStringDecoder(charset_ == "UTF-8"    ? QStringConverter::Utf8
-                                  : charset_ == "UTF-16" ? QStringConverter::Utf16
-                                  : charset_ == "UTF-32" ? QStringConverter::Utf32
-                                                         : QStringConverter::Latin1);
-    QString text = decoder.decode(data);
+    // choose decoder once
+    const auto conv =
+        charset_ == "UTF-8"  ? QStringConverter::Utf8  :
+        charset_ == "UTF-16" ? QStringConverter::Utf16 :
+        charset_ == "UTF-32" ? QStringConverter::Utf32 :
+                               QStringConverter::Latin1;
+
+    QStringDecoder decoder(conv);
+
+    // stream decode directly from mapped memory to avoid building a second full-size buffer
+    // if we need to truncate a huge line, decode only up to cutoff and then append the notice
+    QString text;
+    text.reserve(static_cast<int>(qMin<qint64>(fsz, 1'500'000))); // rough reservation to reduce reallocs
+
+    const qint64 keepLen = scan.cutoff >= 0 ? scan.cutoff : (end - begin);
+    if (keepLen > 0) {
+        // decode in large chunks to be friendly to allocator for very large files
+        constexpr qint64 CHUNK = 1 << 20; // 1 MiB chunks
+        qint64 processed = 0;
+        while (processed < keepLen) {
+            const qint64 n = qMin(CHUNK, keepLen - processed);
+            const auto view = QByteArrayView(reinterpret_cast<const char*>(begin + processed), static_cast<int>(n));
+            text += decoder.decode(view);
+            processed += n;
+        }
+    }
+
+    // finalize the decoder state
+    text += decoder.decode({}); // flush any pending partial sequence
+
+    if (scan.cutoff >= 0) {
+        appendHugeLineNotice(text);
+        forceUneditable_ = true;
+    }
+
+    file.close();
 
     emit completed(text, fname_, charset_, enforced, reload_, restoreCursor_, posInLine_, forceUneditable_, multiple_);
 }
 
-}  // namespace FeatherPad
+} // namespace FeatherPad
