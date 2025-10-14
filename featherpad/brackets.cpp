@@ -4,6 +4,7 @@
 
 #include "fpwin.h"
 #include "ui_fp.h"
+#include <algorithm>  // std::min, std::max
 
 namespace FeatherPad {
 
@@ -22,11 +23,13 @@ static inline bool matchForwardGeneric(QTextBlock block,
         if (!data)
             return false;
 
-        const QList<InfoT*> infos = getList(data);
-        int i = startIndex;
+        // getList returns by value to avoid dangling references
+        const auto infos = getList(data);
         const int docPos = block.position();
+        const int n = infos.size();
+        int i = startIndex;
 
-        for (; i < infos.size(); ++i) {
+        for (; i < n; ++i) {
             const InfoT* info = infos.at(i);
             const char ch = info->character;
             if (ch == openCh) {
@@ -38,9 +41,7 @@ static inline bool matchForwardGeneric(QTextBlock block,
                     onMatch(docPos + info->position);
                     return true;
                 }
-                else {
-                    --depth;
-                }
+                --depth;
             }
         }
 
@@ -64,12 +65,14 @@ static inline bool matchBackwardGeneric(QTextBlock block,
         if (!data)
             return false;
 
-        const QList<InfoT*> infos = getList(data);
-        int i = startIndexFromEnd;
+        // getList returns by value to avoid dangling references
+        const auto infos = getList(data);
         const int docPos = block.position();
+        const int n = infos.size();
+        int i = startIndexFromEnd;
 
-        for (; i < infos.size(); ++i) {
-            const InfoT* info = infos.at(infos.size() - 1 - i);
+        for (; i < n; ++i) {
+            const InfoT* info = infos.at(n - 1 - i);
             const char ch = info->character;
             if (ch == closeCh) {
                 ++depth;
@@ -80,9 +83,7 @@ static inline bool matchBackwardGeneric(QTextBlock block,
                     onMatch(docPos + info->position);
                     return true;
                 }
-                else {
-                    --depth;
-                }
+                --depth;
             }
         }
 
@@ -130,11 +131,13 @@ void FPwin::matchBrackets() {
     bool isAtRight = (chPrev == QChar(')'));
     bool findNextBrace = !isAtLeft || !isAtRight;
     if (isAtLeft || isAtRight) {
-        const QList<ParenthesisInfo*> infos = data->parentheses();
+        // fetch by value to avoid binding a reference to a temporary
+        const auto infos = data->parentheses();
 
         if (isAtLeft) {
-            for (int i = 0; i < infos.size(); ++i) {
-                ParenthesisInfo* info = infos.at(i);
+            const int n = infos.size();
+            for (int i = 0; i < n; ++i) {
+                const ParenthesisInfo* info = infos.at(i);
                 if (info->position == curBlockPos && info->character == '(') {
                     if (matchLeftParenthesis(cur.block(), i + 1, 0)) {
                         onMatch(blockPos + info->position);
@@ -146,10 +149,11 @@ void FPwin::matchBrackets() {
             }
         }
         if (isAtRight) {
-            for (int i = 0; i < infos.size(); ++i) {
-                ParenthesisInfo* info = infos.at(i);
+            const int n = infos.size();
+            for (int i = 0; i < n; ++i) {
+                const ParenthesisInfo* info = infos.at(i);
                 if (info->position == curBlockPos - 1 && info->character == ')') {
-                    if (matchRightParenthesis(cur.block(), infos.size() - i, 0)) {
+                    if (matchRightParenthesis(cur.block(), n - i, 0)) {
                         onMatch(blockPos + info->position);
                         if (!isAtLeft)
                             break;
@@ -167,11 +171,12 @@ void FPwin::matchBrackets() {
     isAtRight = (chPrev == QChar('}'));
     findNextBrace = !isAtLeft || !isAtRight;
     if (isAtLeft || isAtRight) {
-        const QList<BraceInfo*> infos = data->braces();
+        const auto infos = data->braces();
 
         if (isAtLeft) {
-            for (int i = 0; i < infos.size(); ++i) {
-                BraceInfo* info = infos.at(i);
+            const int n = infos.size();
+            for (int i = 0; i < n; ++i) {
+                const BraceInfo* info = infos.at(i);
                 if (info->position == curBlockPos && info->character == '{') {
                     if (matchLeftBrace(cur.block(), i + 1, 0)) {
                         onMatch(blockPos + info->position);
@@ -183,10 +188,11 @@ void FPwin::matchBrackets() {
             }
         }
         if (isAtRight) {
-            for (int i = 0; i < infos.size(); ++i) {
-                BraceInfo* info = infos.at(i);
+            const int n = infos.size();
+            for (int i = 0; i < n; ++i) {
+                const BraceInfo* info = infos.at(i);
                 if (info->position == curBlockPos - 1 && info->character == '}') {
-                    if (matchRightBrace(cur.block(), infos.size() - i, 0)) {
+                    if (matchRightBrace(cur.block(), n - i, 0)) {
                         onMatch(blockPos + info->position);
                         if (!isAtLeft)
                             break;
@@ -203,11 +209,12 @@ void FPwin::matchBrackets() {
     isAtLeft = (chHere == QChar('['));
     isAtRight = (chPrev == QChar(']'));
     if (isAtLeft || isAtRight) {
-        const QList<BracketInfo*> infos = data->brackets();
+        const auto infos = data->brackets();
 
         if (isAtLeft) {
-            for (int i = 0; i < infos.size(); ++i) {
-                BracketInfo* info = infos.at(i);
+            const int n = infos.size();
+            for (int i = 0; i < n; ++i) {
+                const BracketInfo* info = infos.at(i);
                 if (info->position == curBlockPos && info->character == '[') {
                     if (matchLeftBracket(cur.block(), i + 1, 0)) {
                         onMatch(blockPos + info->position);
@@ -219,10 +226,11 @@ void FPwin::matchBrackets() {
             }
         }
         if (isAtRight) {
-            for (int i = 0; i < infos.size(); ++i) {
-                BracketInfo* info = infos.at(i);
+            const int n = infos.size();
+            for (int i = 0; i < n; ++i) {
+                const BracketInfo* info = infos.at(i);
                 if (info->position == curBlockPos - 1 && info->character == ']') {
-                    if (matchRightBracket(cur.block(), infos.size() - i, 0)) {
+                    if (matchRightBracket(cur.block(), n - i, 0)) {
                         onMatch(blockPos + info->position);
                         if (!isAtLeft)
                             break;

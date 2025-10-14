@@ -1,65 +1,67 @@
 /*
- * Copyright (C) Pedram Pourang (aka Tsu Jan) 2014-2019 <tsujan2000@gmail.com>
- *
- * FeatherPad is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * FeatherPad is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
+ * texxy/lineedit.cpp
  */
 
 #include "lineedit.h"
 #include <QToolButton>
+#include <QAbstractButton>
+#include <QKeyEvent>
+#include <algorithm>  // std::find_if
+#include <utility>    // std::as_const
 
 namespace FeatherPad {
 
 LineEdit::LineEdit(QWidget* parent) : QLineEdit(parent) {
     setClearButtonEnabled(true);
-    QList<QToolButton*> list = findChildren<QToolButton*>();
-    if (list.isEmpty())
+
+    // single child lookup and std::find_if to pick the clear button if it exists
+    const auto buttons = findChildren<QToolButton*>();
+    if (buttons.isEmpty())
         return;
-    QToolButton* clearButton = list.at(0);
-    if (clearButton) {
-        clearButton->setToolTip(tr("Clear text (Ctrl+K)"));
-        /* we'll need this for clearing found matches highlighting */
-        connect(clearButton, &QAbstractButton::clicked, this, &LineEdit::returnPressed);
-    }
+
+    const auto it = std::find_if(buttons.cbegin(), buttons.cend(), [](const QToolButton* b) {
+        return b && b->objectName().contains(QStringLiteral("qt_edit_clear"), Qt::CaseInsensitive);
+    });
+    QToolButton* clearButton = (it != buttons.cend()) ? *it : buttons.constFirst();
+
+    clearButton->setToolTip(tr("Clear text (Ctrl+K)"));
+    // connect to returnPressed to clear any match highlights upstream
+    connect(clearButton, &QAbstractButton::clicked, this, &LineEdit::returnPressed);
 }
 /*************************/
 void LineEdit::keyPressEvent(QKeyEvent* event) {
-    /* because of a bug in Qt, the non-breaking space (ZWNJ) may not be inserted with SHIFT+SPACE */
-    if (event->key() == 0x200c) {
+    // work around Qt bug where ZWNJ might not be inserted with Shift+Space on some platforms
+    if (event->key() == 0x200C) {
         insert(QChar(0x200C));
         event->accept();
         return;
     }
-    if (event->modifiers() == Qt::ControlModifier) {
-        if (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down) {  // in case it belongs to a combo box
+
+    const auto mods = event->modifiers();
+    const int key = event->key();
+
+    // bit test for modifiers because Qt may set additional flags like KeypadModifier
+    if (mods & Qt::ControlModifier) {
+        // if embedded in a combo, Ctrl+Up/Down should open the popup
+        if (key == Qt::Key_Up || key == Qt::Key_Down) {
             emit showComboPopup();
             event->accept();
             return;
         }
-        /* since two line-ediits can be shown, Ctrl+K can't be used
-           as a QShortcut but can come here for clearing the text */
-        if (event->key() == Qt::Key_K) {
+        // Ctrl+K clears the line edit and triggers returnPressed to clear highlights
+        if (key == Qt::Key_K) {
             clear();
-            emit returnPressed();  // for clearing found matches highlighting
+            emit returnPressed();
+            event->accept();
+            return;
         }
     }
+
     QLineEdit::keyPressEvent(event);
 }
 /*************************/
 void LineEdit::focusInEvent(QFocusEvent* ev) {
-    /* first do what QLineEdit does */
+    // first do what QLineEdit does
     QLineEdit::focusInEvent(ev);
     emit receivedFocus();
 }

@@ -6,23 +6,33 @@
 #include "encoding.h"
 
 #include <cstdint>
+#include <cstddef>
 #include <cstring>
 #include <string_view>
 
 // keep heavy logic out of Qt namespace pollution
 namespace {
 
-// returns pointer advanced past consecutive ASCII bytes using 8-byte chunks
+// returns pointer advanced past consecutive ASCII bytes using wide chunks
 // uses memcpy to avoid UB on unaligned loads
 static inline const unsigned char* skip_ascii(const unsigned char* p, const unsigned char* end) noexcept {
+    // process 8 bytes at a time while possible
     while (static_cast<size_t>(end - p) >= sizeof(uint64_t)) {
         uint64_t chunk;
         std::memcpy(&chunk, p, sizeof(chunk));
         if (chunk & 0x8080808080808080ULL)
-            break  // some byte has high bit set
-                ;
+            break;  // some byte has high bit set
         p += sizeof(uint64_t);
     }
+    // process 4 bytes
+    if (static_cast<size_t>(end - p) >= sizeof(uint32_t)) {
+        uint32_t chunk32;
+        std::memcpy(&chunk32, p, sizeof(chunk32));
+        if ((chunk32 & 0x80808080U) == 0) {
+            p += sizeof(uint32_t);
+        }
+    }
+    // process residual bytes
     while (p < end && (*p < 0x80))
         ++p;
     return p;

@@ -12,6 +12,6 @@ namespace FeatherPad {
 
 QString detectCharset(const QByteArray& byteArray);
 
-}
+}  // namespace FeatherPad
 
 #endif  // ENCODING_H
