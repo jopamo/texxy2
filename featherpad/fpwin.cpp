@@ -521,37 +521,30 @@ void FPwin::menubarTitle(bool add, bool setTitle) {
 void FPwin::applyConfigOnStarting() {
     Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
 
+    // geometry and window state
     if (config.getRemSize()) {
         resize(config.getWinSize());
-        if (!config.getRemPos() || static_cast<FPsingleton*>(qApp)->isWayland())  // otherwise -> showEvent()
-        {
-            if (config.getIsFull() && config.getIsMaxed())
-                setWindowState(Qt::WindowMaximized | Qt::WindowFullScreen);
-            else if (config.getIsMaxed())
-                setWindowState(Qt::WindowMaximized);
-            else if (config.getIsFull())
-                setWindowState(Qt::WindowFullScreen);
+        // on Wayland or when position isn't remembered, apply state now, otherwise showEvent handles it
+        if (!config.getRemPos() || static_cast<FPsingleton*>(qApp)->isWayland()) {
+            Qt::WindowStates st = {};
+            if (config.getIsMaxed())
+                st |= Qt::WindowMaximized;
+            if (config.getIsFull())
+                st |= Qt::WindowFullScreen;
+            if (st)
+                setWindowState(st);
         }
     }
     else {
         QSize startSize = config.getStartSize();
-        /*QSize ag;
-        if (QScreen *pScreen = QApplication::primaryScreen()) // the window isn't shown yet
-            ag = pScreen->availableGeometry().size();
-        if (!ag.isEmpty()
-            && (startSize.width() > ag.width() || startSize.height() > ag.height()))
-        {
-            startSize = startSize.boundedTo (ag);
-            config.setStartSize (startSize);
-        }
-        else */
         if (startSize.isEmpty()) {
-            startSize = QSize(700, 500);
-            config.setStartSize(startSize);
+            startSize = QSize(700, 500);     // sane default
+            config.setStartSize(startSize);  // persist default so later writes are minimized
         }
         resize(startSize);
     }
 
+    // basic UI visibility
     ui->mainToolBar->setVisible(!config.getNoToolbar());
     ui->menuBar->setVisible(!config.getNoMenubar());
     ui->actionMenu->setVisible(config.getNoMenubar());
@@ -560,18 +553,16 @@ void FPwin::applyConfigOnStarting() {
         menubarTitle();
 
     ui->actionDoc->setVisible(!config.getShowStatusbar());
-
     ui->actionWrap->setChecked(config.getWrapByDefault());
-
     ui->actionIndent->setChecked(config.getIndentByDefault());
-
     ui->actionLineNumbers->setChecked(config.getLineByDefault());
     ui->actionLineNumbers->setDisabled(config.getLineByDefault());
-
     ui->actionSyntax->setChecked(config.getSyntaxByDefault());
 
-    if (!config.getShowStatusbar())
+    // statusbar and optional widgets
+    if (!config.getShowStatusbar()) {
         ui->statusBar->hide();
+    }
     else {
         if (config.getShowCursorPos())
             addCursorPosLabel();
@@ -579,155 +570,160 @@ void FPwin::applyConfigOnStarting() {
     if (config.getShowLangSelector() && config.getSyntaxByDefault())
         addRemoveLangBtn(true);
 
+    // tab position and side pane behavior
     if (config.getTabPosition() != 0)
         ui->tabWidget->setTabPosition(static_cast<QTabWidget::TabPosition>(config.getTabPosition()));
 
-    if (!config.getSidePaneMode())  // hideSingle() shouldn't be set with the side-pane
-    {
+    if (!config.getSidePaneMode()) {
+        // hideSingle should not be active when side pane mode is on
         ui->tabWidget->tabBar()->hideSingle(config.getHideSingleTab());
-        /* for the side pane, these connections are made in toggleSidePane() */
-        connect(ui->actionLastTab, &QAction::triggered, this, &FPwin::lastTab);
-        connect(ui->actionFirstTab, &QAction::triggered, this, &FPwin::firstTab);
+        // connect with UniqueConnection to avoid duplicates on repeated calls
+        QObject::connect(ui->actionLastTab, &QAction::triggered, this, &FPwin::lastTab, Qt::UniqueConnection);
+        QObject::connect(ui->actionFirstTab, &QAction::triggered, this, &FPwin::firstTab, Qt::UniqueConnection);
     }
-    else
+    else {
         toggleSidePane();
+    }
 
+    // recently opened menu
     if (config.getRecentOpened())
         ui->menuOpenRecently->setTitle(tr("&Recently Opened"));
-    int recentNumber = config.getCurRecentFilesNumber();
-    if (recentNumber <= 0)
+    const int recentNumber = config.getCurRecentFilesNumber();
+    if (recentNumber <= 0) {
         ui->menuOpenRecently->setEnabled(false);
+    }
     else {
-        QAction* recentAction = nullptr;
         for (int i = 0; i < recentNumber; ++i) {
-            recentAction = new QAction(this);
+            auto* recentAction = new QAction(this);
             recentAction->setVisible(false);
-            connect(recentAction, &QAction::triggered, this, &FPwin::newTabFromRecent);
+            QObject::connect(recentAction, &QAction::triggered, this, &FPwin::newTabFromRecent, Qt::UniqueConnection);
             ui->menuOpenRecently->addAction(recentAction);
         }
         ui->menuOpenRecently->addSeparator();
         ui->menuOpenRecently->addAction(ui->actionClearRecent);
-        connect(ui->menuOpenRecently, &QMenu::aboutToShow, this, &FPwin::updateRecenMenu);
-        connect(ui->actionClearRecent, &QAction::triggered, this, &FPwin::clearRecentMenu);
+        QObject::connect(ui->menuOpenRecently, &QMenu::aboutToShow, this, &FPwin::updateRecenMenu,
+                         Qt::UniqueConnection);
+        QObject::connect(ui->actionClearRecent, &QAction::triggered, this, &FPwin::clearRecentMenu,
+                         Qt::UniqueConnection);
     }
 
-    ui->actionSave->setEnabled(config.getSaveUnmodified());  // newTab() will be called after this
+    // saving behavior
+    ui->actionSave->setEnabled(config.getSaveUnmodified());  // newTab will adjust per tab state
 
-    if (config.getSysIcons()) {
-        ui->actionNew->setIcon(QIcon::fromTheme("document-new"));
-        ui->actionOpen->setIcon(QIcon::fromTheme("document-open"));
-        ui->actionSession->setIcon(QIcon::fromTheme("bookmark-new"));
-        ui->menuOpenRecently->setIcon(QIcon::fromTheme("document-open-recent"));
-        ui->actionClearRecent->setIcon(QIcon::fromTheme("edit-clear"));
-        ui->actionSave->setIcon(QIcon::fromTheme("document-save"));
-        ui->actionSaveAs->setIcon(QIcon::fromTheme("document-save-as"));
-        ui->actionSaveAllFiles->setIcon(QIcon::fromTheme("document-save-all"));
-        ui->actionSaveCodec->setIcon(QIcon::fromTheme("document-save-as"));
-        ui->actionPrint->setIcon(QIcon::fromTheme("document-print"));
-        ui->actionDoc->setIcon(QIcon::fromTheme("document-properties"));
-        ui->actionUndo->setIcon(QIcon::fromTheme("edit-undo"));
-        ui->actionRedo->setIcon(QIcon::fromTheme("edit-redo"));
-        ui->actionCut->setIcon(QIcon::fromTheme("edit-cut"));
-        ui->actionCopy->setIcon(QIcon::fromTheme("edit-copy"));
-        ui->actionPaste->setIcon(QIcon::fromTheme("edit-paste"));
-        ui->actionDate->setIcon(QIcon::fromTheme("appointment-new"));
-        ui->actionDelete->setIcon(QIcon::fromTheme("edit-delete"));
-        ui->actionSelectAll->setIcon(QIcon::fromTheme("edit-select-all"));
-        ui->actionReload->setIcon(QIcon::fromTheme("view-refresh"));
-        ui->actionFind->setIcon(QIcon::fromTheme("edit-find"));
-        ui->actionReplace->setIcon(QIcon::fromTheme("edit-find-replace"));
-        ui->actionClose->setIcon(QIcon::fromTheme("window-close"));
-        ui->actionQuit->setIcon(QIcon::fromTheme("application-exit"));
-        ui->actionFont->setIcon(QIcon::fromTheme("preferences-desktop-font"));
-        ui->actionPreferences->setIcon(QIcon::fromTheme("preferences-system"));
-        ui->actionHelp->setIcon(QIcon::fromTheme("help-contents"));
-        ui->actionAbout->setIcon(QIcon::fromTheme("help-about"));
-        ui->actionJump->setIcon(QIcon::fromTheme("go-jump"));
-        ui->actionSidePane->setIcon(
-            QIcon::fromTheme("sidebar-expand-left", symbolicIcon::icon(":icons/side-pane.svg")));
-        ui->actionEdit->setIcon(QIcon::fromTheme("document-edit"));
-        ui->actionRun->setIcon(QIcon::fromTheme("system-run"));
-        ui->actionCopyName->setIcon(QIcon::fromTheme("edit-copy"));
-        ui->actionCopyPath->setIcon(QIcon::fromTheme("edit-copy"));
+    // icons
+    const bool useSys = config.getSysIcons();
+    const bool rtl = QApplication::layoutDirection() == Qt::RightToLeft;
 
-        ui->actionCloseOther->setIcon(QIcon::fromTheme("window-close"));
-        ui->actionMenu->setIcon(QIcon::fromTheme("application-menu"));
+    auto setIconTheme = [&](QAction* act, const char* name, const QIcon& fallback = QIcon()) {
+        if (!act)
+            return;
+        act->setIcon(QIcon::fromTheme(name, fallback));
+    };
+    auto setIconRes = [&](QAction* act, const char* res) {
+        if (!act)
+            return;
+        act->setIcon(symbolicIcon::icon(res));
+    };
 
-        if (QApplication::layoutDirection() == Qt::RightToLeft) {
-            ui->actionCloseRight->setIcon(QIcon::fromTheme("go-previous"));
-            ui->actionCloseLeft->setIcon(QIcon::fromTheme("go-next"));
-            ui->actionRightTab->setIcon(QIcon::fromTheme("go-previous"));
-            ui->actionLeftTab->setIcon(QIcon::fromTheme("go-next"));
-        }
-        else {
-            ui->actionCloseRight->setIcon(QIcon::fromTheme("go-next"));
-            ui->actionCloseLeft->setIcon(QIcon::fromTheme("go-previous"));
-            ui->actionRightTab->setIcon(QIcon::fromTheme("go-next"));
-            ui->actionLeftTab->setIcon(QIcon::fromTheme("go-previous"));
-        }
+    if (useSys) {
+        setIconTheme(ui->actionNew, "document-new");
+        setIconTheme(ui->actionOpen, "document-open");
+        setIconTheme(ui->actionSession, "bookmark-new");
+        setIconTheme(ui->menuOpenRecently->menuAction(), "document-open-recent");
+        setIconTheme(ui->actionClearRecent, "edit-clear");
+        setIconTheme(ui->actionSave, "document-save");
+        setIconTheme(ui->actionSaveAs, "document-save-as");
+        setIconTheme(ui->actionSaveAllFiles, "document-save-all");
+        setIconTheme(ui->actionSaveCodec, "document-save-as");
+        setIconTheme(ui->actionPrint, "document-print");
+        setIconTheme(ui->actionDoc, "document-properties");
+        setIconTheme(ui->actionUndo, "edit-undo");
+        setIconTheme(ui->actionRedo, "edit-redo");
+        setIconTheme(ui->actionCut, "edit-cut");
+        setIconTheme(ui->actionCopy, "edit-copy");
+        setIconTheme(ui->actionPaste, "edit-paste");
+        setIconTheme(ui->actionDate, "appointment-new");
+        setIconTheme(ui->actionDelete, "edit-delete");
+        setIconTheme(ui->actionSelectAll, "edit-select-all");
+        setIconTheme(ui->actionReload, "view-refresh");
+        setIconTheme(ui->actionFind, "edit-find");
+        setIconTheme(ui->actionReplace, "edit-find-replace");
+        setIconTheme(ui->actionClose, "window-close");
+        setIconTheme(ui->actionQuit, "application-exit");
+        setIconTheme(ui->actionFont, "preferences-desktop-font");
+        setIconTheme(ui->actionPreferences, "preferences-system");
+        setIconTheme(ui->actionHelp, "help-contents");
+        setIconTheme(ui->actionAbout, "help-about");
+        setIconTheme(ui->actionJump, "go-jump");
+        setIconTheme(ui->actionSidePane, "sidebar-expand-left", symbolicIcon::icon(":icons/side-pane.svg"));
+        setIconTheme(ui->actionEdit, "document-edit");
+        setIconTheme(ui->actionRun, "system-run");
+        setIconTheme(ui->actionCopyName, "edit-copy");
+        setIconTheme(ui->actionCopyPath, "edit-copy");
+        setIconTheme(ui->actionCloseOther, "window-close");
+        setIconTheme(ui->actionMenu, "application-menu");
+
+        setIconTheme(ui->actionCloseRight, rtl ? "go-previous" : "go-next");
+        setIconTheme(ui->actionCloseLeft, rtl ? "go-next" : "go-previous");
+        setIconTheme(ui->actionRightTab, rtl ? "go-previous" : "go-next");
+        setIconTheme(ui->actionLeftTab, rtl ? "go-next" : "go-previous");
     }
     else {
-        ui->actionNew->setIcon(symbolicIcon::icon(":icons/document-new.svg"));
-        ui->actionOpen->setIcon(symbolicIcon::icon(":icons/document-open.svg"));
-        ui->actionSession->setIcon(symbolicIcon::icon(":icons/session.svg"));
-        ui->menuOpenRecently->setIcon(symbolicIcon::icon(":icons/document-open-recent.svg"));
-        ui->actionClearRecent->setIcon(symbolicIcon::icon(":icons/edit-clear.svg"));
-        ui->actionSave->setIcon(symbolicIcon::icon(":icons/document-save.svg"));
-        ui->actionSaveAs->setIcon(symbolicIcon::icon(":icons/document-save-as.svg"));
-        ui->actionSaveAllFiles->setIcon(symbolicIcon::icon(":icons/document-save-all.svg"));
-        ui->actionSaveCodec->setIcon(symbolicIcon::icon(":icons/document-save-as.svg"));
-        ui->actionPrint->setIcon(symbolicIcon::icon(":icons/document-print.svg"));
-        ui->actionDoc->setIcon(symbolicIcon::icon(":icons/document-properties.svg"));
-        ui->actionUndo->setIcon(symbolicIcon::icon(":icons/edit-undo.svg"));
-        ui->actionRedo->setIcon(symbolicIcon::icon(":icons/edit-redo.svg"));
-        ui->actionCut->setIcon(symbolicIcon::icon(":icons/edit-cut.svg"));
-        ui->actionCopy->setIcon(symbolicIcon::icon(":icons/edit-copy.svg"));
-        ui->actionPaste->setIcon(symbolicIcon::icon(":icons/edit-paste.svg"));
-        ui->actionDate->setIcon(symbolicIcon::icon(":icons/document-open-recent.svg"));
-        ui->actionDelete->setIcon(symbolicIcon::icon(":icons/edit-delete.svg"));
-        ui->actionSelectAll->setIcon(symbolicIcon::icon(":icons/edit-select-all.svg"));
-        ui->actionReload->setIcon(symbolicIcon::icon(":icons/view-refresh.svg"));
-        ui->actionFind->setIcon(symbolicIcon::icon(":icons/edit-find.svg"));
-        ui->actionReplace->setIcon(symbolicIcon::icon(":icons/edit-find-replace.svg"));
-        ui->actionClose->setIcon(symbolicIcon::icon(":icons/window-close.svg"));
-        ui->actionQuit->setIcon(symbolicIcon::icon(":icons/application-exit.svg"));
-        ui->actionFont->setIcon(symbolicIcon::icon(":icons/preferences-desktop-font.svg"));
-        ui->actionPreferences->setIcon(symbolicIcon::icon(":icons/preferences-system.svg"));
-        ui->actionHelp->setIcon(symbolicIcon::icon(":icons/help-contents.svg"));
-        ui->actionAbout->setIcon(symbolicIcon::icon(":icons/help-about.svg"));
-        ui->actionJump->setIcon(symbolicIcon::icon(":icons/go-jump.svg"));
-        ui->actionSidePane->setIcon(symbolicIcon::icon(":icons/side-pane.svg"));
-        ui->actionEdit->setIcon(symbolicIcon::icon(":icons/document-edit.svg"));
-        ui->actionRun->setIcon(symbolicIcon::icon(":icons/system-run.svg"));
-        ui->actionCopyName->setIcon(symbolicIcon::icon(":icons/edit-copy.svg"));
-        ui->actionCopyPath->setIcon(symbolicIcon::icon(":icons/edit-copy.svg"));
+        setIconRes(ui->actionNew, ":icons/document-new.svg");
+        setIconRes(ui->actionOpen, ":icons/document-open.svg");
+        setIconRes(ui->actionSession, ":icons/session.svg");
+        setIconRes(ui->menuOpenRecently->menuAction(), ":icons/document-open-recent.svg");
+        setIconRes(ui->actionClearRecent, ":icons/edit-clear.svg");
+        setIconRes(ui->actionSave, ":icons/document-save.svg");
+        setIconRes(ui->actionSaveAs, ":icons/document-save-as.svg");
+        setIconRes(ui->actionSaveAllFiles, ":icons/document-save-all.svg");
+        setIconRes(ui->actionSaveCodec, ":icons/document-save-as.svg");
+        setIconRes(ui->actionPrint, ":icons/document-print.svg");
+        setIconRes(ui->actionDoc, ":icons/document-properties.svg");
+        setIconRes(ui->actionUndo, ":icons/edit-undo.svg");
+        setIconRes(ui->actionRedo, ":icons/edit-redo.svg");
+        setIconRes(ui->actionCut, ":icons/edit-cut.svg");
+        setIconRes(ui->actionCopy, ":icons/edit-copy.svg");
+        setIconRes(ui->actionPaste, ":icons/edit-paste.svg");
+        setIconRes(ui->actionDate, ":icons/document-open-recent.svg");
+        setIconRes(ui->actionDelete, ":icons/edit-delete.svg");
+        setIconRes(ui->actionSelectAll, ":icons/edit-select-all.svg");
+        setIconRes(ui->actionReload, ":icons/view-refresh.svg");
+        setIconRes(ui->actionFind, ":icons/edit-find.svg");
+        setIconRes(ui->actionReplace, ":icons/edit-find-replace.svg");
+        setIconRes(ui->actionClose, ":icons/window-close.svg");
+        setIconRes(ui->actionQuit, ":icons/application-exit.svg");
+        setIconRes(ui->actionFont, ":icons/preferences-desktop-font.svg");
+        setIconRes(ui->actionPreferences, ":icons/preferences-system.svg");
+        setIconRes(ui->actionHelp, ":icons/help-contents.svg");
+        setIconRes(ui->actionAbout, ":icons/help-about.svg");
+        setIconRes(ui->actionJump, ":icons/go-jump.svg");
+        setIconRes(ui->actionSidePane, ":icons/side-pane.svg");
+        setIconRes(ui->actionEdit, ":icons/document-edit.svg");
+        setIconRes(ui->actionRun, ":icons/system-run.svg");
+        setIconRes(ui->actionCopyName, ":icons/edit-copy.svg");
+        setIconRes(ui->actionCopyPath, ":icons/edit-copy.svg");
+        setIconRes(ui->actionCloseOther, ":icons/tab-close-other.svg");
+        setIconRes(ui->actionMenu, ":icons/application-menu.svg");
 
-        ui->actionCloseOther->setIcon(symbolicIcon::icon(":icons/tab-close-other.svg"));
-        ui->actionMenu->setIcon(symbolicIcon::icon(":icons/application-menu.svg"));
-
-        if (QApplication::layoutDirection() == Qt::RightToLeft) {
-            ui->actionCloseRight->setIcon(symbolicIcon::icon(":icons/go-previous.svg"));
-            ui->actionCloseLeft->setIcon(symbolicIcon::icon(":icons/go-next.svg"));
-            ui->actionRightTab->setIcon(symbolicIcon::icon(":icons/go-previous.svg"));
-            ui->actionLeftTab->setIcon(symbolicIcon::icon(":icons/go-next.svg"));
-        }
-        else {
-            ui->actionCloseRight->setIcon(symbolicIcon::icon(":icons/go-next.svg"));
-            ui->actionCloseLeft->setIcon(symbolicIcon::icon(":icons/go-previous.svg"));
-            ui->actionRightTab->setIcon(symbolicIcon::icon(":icons/go-next.svg"));
-            ui->actionLeftTab->setIcon(symbolicIcon::icon(":icons/go-previous.svg"));
-        }
+        setIconRes(ui->actionCloseRight, rtl ? ":icons/go-previous.svg" : ":icons/go-next.svg");
+        setIconRes(ui->actionCloseLeft, rtl ? ":icons/go-next.svg" : ":icons/go-previous.svg");
+        setIconRes(ui->actionRightTab, rtl ? ":icons/go-previous.svg" : ":icons/go-next.svg");
+        setIconRes(ui->actionLeftTab, rtl ? ":icons/go-next.svg" : ":icons/go-previous.svg");
     }
 
+    // small toolbar icons
     ui->toolButtonNext->setIcon(symbolicIcon::icon(":icons/go-down.svg"));
     ui->toolButtonPrv->setIcon(symbolicIcon::icon(":icons/go-up.svg"));
     ui->toolButtonAll->setIcon(symbolicIcon::icon(":icons/arrow-down-double.svg"));
 
+    // window icon
     setWindowIcon(QIcon::fromTheme("featherpad", QIcon(":icons/featherpad.svg")));
 
-    if (!config.hasReservedShortcuts()) {  // the reserved shortcuts list could also be in "singleton.cpp"
+    // reserved shortcuts initialization
+    if (!config.hasReservedShortcuts()) {
         QStringList reserved;
-        // QPLainTextEdit
+        // QPlainTextEdit
         reserved << QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z).toString()
                  << QKeySequence(Qt::CTRL | Qt::Key_Z).toString() << QKeySequence(Qt::CTRL | Qt::Key_X).toString()
                  << QKeySequence(Qt::CTRL | Qt::Key_C).toString() << QKeySequence(Qt::CTRL | Qt::Key_V).toString()
@@ -751,7 +747,7 @@ void FPwin::applyConfigOnStarting() {
                  << QKeySequence(Qt::Key_F7).toString() << QKeySequence(Qt::Key_F8).toString()
                  << QKeySequence(Qt::Key_F9).toString() << QKeySequence(Qt::Key_F10).toString()
                  << QKeySequence(Qt::Key_F11).toString()
-                 // side-pane focusing
+                 // side pane focusing
                  << QKeySequence(Qt::CTRL | Qt::Key_Escape).toString()
                  // zooming
                  << QKeySequence(Qt::CTRL | Qt::Key_Equal).toString()
@@ -765,35 +761,38 @@ void FPwin::applyConfigOnStarting() {
                  << QKeySequence(Qt::SHIFT | Qt::Key_Return).toString() << QKeySequence(Qt::Key_Tab).toString()
                  << QKeySequence(Qt::CTRL | Qt::Key_Tab).toString()
                  << QKeySequence(Qt::CTRL | Qt::META | Qt::Key_Tab).toString()
-                 // select text on jumping (not an action)
+                 // select text on jumping
                  << QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_J).toString()
                  // used by LineEdit as well as QPlainTextEdit
                  << QKeySequence(Qt::CTRL | Qt::Key_K).toString();
+
         config.setReservedShortcuts(reserved);
         config.readShortcuts();
     }
 
-    QHash<QString, QString> ca = config.customShortcutActions();
-    QHash<QString, QString>::const_iterator it = ca.constBegin();
-    while (it != ca.constEnd()) {  // NOTE: Custom shortcuts are saved in the PortableText format.
-        if (QAction* action = findChild<QAction*>(it.key()))
+    // apply custom shortcuts
+    const auto ca = config.customShortcutActions();
+    for (auto it = ca.constBegin(); it != ca.constEnd(); ++it) {
+        if (auto* action = findChild<QAction*>(it.key()))
             action->setShortcut(QKeySequence(it.value(), QKeySequence::PortableText));
-        ++it;
     }
 
+    // autosave
     if (config.getAutoSave())
         startAutoSaving(true, config.getAutoSaveInterval());
 
+    // optionally strip menubar accelerators
     if (config.getDisableMenubarAccel()) {
         const auto menubarActions = ui->menuBar->actions();
         for (const auto& action : menubarActions) {
             QString txt = action->text();
-            txt.remove(QRegularExpression(QStringLiteral("\\s*\\(&[a-zA-Z0-9]\\)\\s*")));  // Chinese. Japanese,...
-            txt.remove(QLatin1Char('&'));                                                  // other languages
+            txt.remove(QRegularExpression(QStringLiteral("\\s*\\(&[a-zA-Z0-9]\\)\\s*")));  // zh ja and similar
+            txt.remove(QLatin1Char('&'));                                                  // other locales
             action->setText(txt);
         }
     }
 }
+
 /*************************/
 void FPwin::addCursorPosLabel() {
     if (ui->statusBar->findChild<QLabel*>("posLabel"))
@@ -1000,156 +999,166 @@ void FPwin::deleteTabPage(int tabIndex, bool saveToList, bool closeWithLastTab) 
         close();
 }
 /*************************/
-// Here, "first" is the index/row, to whose right/bottom all tabs/rows are to be closed.
-// Similarly, "last" is the index/row, to whose left/top all tabs/rows are to be closed.
-// A negative value means including the start for "first" and the end for "last".
-// If both "first" and "last" are negative, all tabs will be closed.
-// The case, when they're both greater than -1, is covered but not used anywhere.
-// Tabs/rows are always closed from right/bottom to left/top.
+// Here, "first" is the index/row, to whose right/bottom all tabs/rows are to be closed
+// Similarly, "last" is the index/row, to whose left/top all tabs/rows are to be closed
+// A negative value means including the start for "first" and the end for "last"
+// If both "first" and "last" are negative, all tabs will be closed
+// The case, when they're both greater than -1, is covered but not used anywhere
+// Tabs/rows are always closed from right/bottom to left/top
 bool FPwin::closePages(int first, int last, bool saveFilesList) {
     if (!isReady()) {
         closePreviousPages_ = false;
         return true;
     }
 
-    pauseAutoSaving(true);
+    // RAII guards for autosave pause and making sure we unbusy on all paths
+    struct AutoPause {
+        FPwin* self;
+        explicit AutoPause(FPwin* s) : self(s) { self->pauseAutoSaving(true); }
+        ~AutoPause() { self->pauseAutoSaving(false); }
+    } autoPause(this);
 
-    bool hasSideList(sidePane_ && !sideItems_.isEmpty());
+    struct FinallyUnbusy {
+        FPwin* self;
+        explicit FinallyUnbusy(FPwin* s) : self(s) {}
+        ~FinallyUnbusy() { self->unbusy(); }
+    } finallyUnbusy(this);
+
+    const bool hasSideList = (sidePane_ && !sideItems_.isEmpty());
+
+    // remember current page or side item to restore if user cancels
     TabPage* curPage = nullptr;
     QListWidgetItem* curItem = nullptr;
     if (hasSideList) {
-        int cur = sidePane_->listWidget()->currentRow();
+        const int cur = sidePane_->listWidget()->currentRow();
         if (!(first < cur && (cur < last || last < 0)))
             curItem = sidePane_->listWidget()->currentItem();
     }
     else {
-        int cur = ui->tabWidget->currentIndex();
+        const int cur = ui->tabWidget->currentIndex();
         if (!(first < cur && (cur < last || last < 0)))
             curPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
     }
+
+    // helpers
+    auto mapIndexToTabIndex = [&](int i) -> int {
+        return hasSideList ? ui->tabWidget->indexOf(sideItems_.value(sidePane_->listWidget()->item(i))) : i;
+    };
+
+    auto updateGuiAfterClose = [&]() {
+        const int count = ui->tabWidget->count();
+        if (count == 0) {
+            ui->actionReload->setDisabled(true);
+            ui->actionSave->setDisabled(true);
+            enableWidgets(false);
+        }
+        else if (count == 1) {
+            updateGUIForSingleTab(true);
+        }
+    };
+
+    auto capSaveFilesList = [&]() {
+        if (lastWinFilesCur_.size() >= MAX_LAST_WIN_FILES)  // never remember more than MAX_LAST_WIN_FILES
+            saveFilesList = false;
+    };
+
+    auto nextRightmostIndex = [&](int currentLast, int currentFirst) -> int {
+        if (currentLast == 0)  // nothing on the left/top to close
+            return -1;         // signal to stop
+        if (currentLast < 0)   // close from the end
+            return ui->tabWidget->count() - 1;
+        if (currentFirst >= currentLast - 1)  // nothing remains in range
+            return -1;
+        return currentLast - 1;  // last is 1-based boundary, so pick the item before it
+    };
+
     bool keep = false;
-    int index, count;
+    bool closing = saveFilesList;  // saveFilesList is true only with closing
     DOCSTATE state = SAVED;
-    bool closing(saveFilesList);  // saveFilesList is true only with closing
+
     while (state == SAVED && ui->tabWidget->count() > 0) {
         makeBusy();
 
-        if (last == 0)
-            break;                               // no tab on the left
-        if (last < 0)                            // close from the end
-            index = ui->tabWidget->count() - 1;  // the last tab/row
-        else                                     // if (last > 0)
-            index = last - 1;
-
-        if (first >= index)
+        int index = nextRightmostIndex(last, first);
+        if (index < 0)
             break;
-        int tabIndex =
-            hasSideList ? ui->tabWidget->indexOf(sideItems_.value(sidePane_->listWidget()->item(index))) : index;
-        if (first == index - 1 && !closePreviousPages_)  // only one tab to be closed
-            state = savePrompt(tabIndex, false, first, last, closing);
-        else
-            state = savePrompt(tabIndex, true, first, last, closing);  // with a "No to all" button
+
+        int tabIndex = mapIndexToTabIndex(index);
+
+        // show No-to-all only if more than one is expected and we are not already in no-prompt continuation
+        const bool multiple = !(first == index - 1 && !closePreviousPages_);
+        state = savePrompt(tabIndex, multiple, first, last, closing);
+
         switch (state) {
-            case SAVED:  // close this tab and go to the next one on the left
+            case SAVED: {
                 keep = false;
-                if (lastWinFilesCur_.size() >= MAX_LAST_WIN_FILES)  // never remember more than 50 files
-                    saveFilesList = false;
+                capSaveFilesList();
                 deleteTabPage(tabIndex, saveFilesList, !closing);
 
-                if (last > -1)  // also last > 0
-                    --last;     // a left tab is removed
+                if (last > -1)  // last is a left/top boundary that shifts as we delete
+                    --last;
 
-                /* final changes */
-                count = ui->tabWidget->count();
-                if (count == 0) {
-                    ui->actionReload->setDisabled(true);
-                    ui->actionSave->setDisabled(true);
-                    enableWidgets(false);
-                }
-                else if (count == 1)
-                    updateGUIForSingleTab(true);
+                updateGuiAfterClose();
                 break;
-            case UNDECIDED:  // stop quitting (cancel or can't save)
+            }
+            case UNDECIDED: {
                 keep = true;
                 if (!locked_)
                     lastWinFilesCur_.clear();
                 break;
-            case DISCARDED:  // no to all: close all tabs (and, probably, quit)
+            }
+            case DISCARDED: {
                 keep = false;
-                while (index > first) {
-                    if (last == 0)
-                        break;
-                    if (lastWinFilesCur_.size() >= MAX_LAST_WIN_FILES)
-                        saveFilesList = false;
-                    deleteTabPage(tabIndex, saveFilesList, !closing);
 
-                    if (last < 0)
-                        index = ui->tabWidget->count() - 1;
-                    else  // if (last > 0)
-                    {
-                        --last;  // a left tab is removed
-                        index = last - 1;
-                    }
-                    tabIndex = hasSideList
-                                   ? ui->tabWidget->indexOf(sideItems_.value(sidePane_->listWidget()->item(index)))
-                                   : index;
+                // close everything within (first, last) without further prompts
+                while (true) {
+                    int idx = nextRightmostIndex(last, first);
+                    if (idx < 0)
+                        break;
+
+                    int t = mapIndexToTabIndex(idx);
+                    capSaveFilesList();
+                    deleteTabPage(t, saveFilesList, !closing);
+
+                    if (last > -1)
+                        --last;
                 }
-                count = ui->tabWidget->count();
-                if (count == 0) {
-                    ui->actionReload->setDisabled(true);
-                    ui->actionSave->setDisabled(true);
-                    enableWidgets(false);
-                }
-                else if (count == 1)
-                    updateGUIForSingleTab(true);
+
+                updateGuiAfterClose();
 
                 if (closePreviousPages_) {  // continue closing previous pages without prompt
                     closePreviousPages_ = false;
                     if (first > 0) {
-                        index = first - 1;
-                        while (index > -1) {
-                            tabIndex =
-                                hasSideList
-                                    ? ui->tabWidget->indexOf(sideItems_.value(sidePane_->listWidget()->item(index)))
-                                    : index;
-                            if (lastWinFilesCur_.size() >= MAX_LAST_WIN_FILES)
-                                saveFilesList = false;
-                            deleteTabPage(tabIndex, saveFilesList, !closing);
-                            --index;
+                        int idx = first - 1;
+                        while (idx > -1) {
+                            int t = mapIndexToTabIndex(idx);
+                            capSaveFilesList();
+                            deleteTabPage(t, saveFilesList, !closing);
+                            --idx;
                         }
-                        count = ui->tabWidget->count();
-                        if (count == 0)  // impossible
-                        {
-                            ui->actionReload->setDisabled(true);
-                            ui->actionSave->setDisabled(true);
-                            enableWidgets(false);
-                        }
-                        else if (count == 1)  // always true
-                            updateGUIForSingleTab(true);
+                        updateGuiAfterClose();
                     }
-                    unbusy();
-                    pauseAutoSaving(false);
                     return false;
                 }
                 break;
+            }
             default:
                 break;
         }
     }
 
-    unbusy();
-    if (!keep) {  // restore the current page/item
+    // restore the current page/item if nothing special to keep
+    if (!keep) {
         if (curPage)
             ui->tabWidget->setCurrentWidget(curPage);
         else if (curItem)
             sidePane_->listWidget()->setCurrentItem(curItem);
-        if (closePreviousPages_) {  // continue closing previous pages
+
+        if (closePreviousPages_) {  // continue closing previous pages after restoring selection
             closePreviousPages_ = false;
             return closePages(-1, first);
         }
     }
-
-    pauseAutoSaving(false);
 
     return keep;
 }
