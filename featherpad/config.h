@@ -10,6 +10,9 @@
 #include <QPoint>
 #include <QFont>
 #include <QColor>
+#include <QVariant>
+#include <QStringList>
+#include <QHash>
 
 #include <algorithm>
 
@@ -35,6 +38,11 @@ class Settings : public QSettings {
 
 class Config {
    public:
+    // centralized limits for guards and UI ranges
+    static constexpr int kRecentFilesMax = 50;
+    static constexpr int kMaxTabPos = 3;   // 0..3 where 0 = default platform
+    static constexpr int kMinTabPos = 0;
+
     Config();
     ~Config();
 
@@ -42,177 +50,177 @@ class Config {
     void readShortcuts();
     void writeConfig();
 
-    bool getRemSize() const { return remSize_; }
+    [[nodiscard]] bool getRemSize() const { return remSize_; }
     void setRemSize(bool rem) { remSize_ = rem; }
 
-    bool getRemPos() const { return remPos_; }
+    [[nodiscard]] bool getRemPos() const { return remPos_; }
     void setRemPos(bool rem) { remPos_ = rem; }
 
-    bool getRemSplitterPos() const { return remSplitterPos_; }
+    [[nodiscard]] bool getRemSplitterPos() const { return remSplitterPos_; }
     void setRemSplitterPos(bool rem) { remSplitterPos_ = rem; }
 
-    bool getIsMaxed() const { return isMaxed_; }
+    [[nodiscard]] bool getIsMaxed() const { return isMaxed_; }
     void setIsMaxed(bool isMaxed) { isMaxed_ = isMaxed; }
 
-    bool getIsFull() const { return isFull_; }
+    [[nodiscard]] bool getIsFull() const { return isFull_; }
     void setIsFull(bool isFull) { isFull_ = isFull; }
 
-    bool getDarkColScheme() const { return darkColScheme_; }
+    [[nodiscard]] bool getDarkColScheme() const { return darkColScheme_; }
     void setDarkColScheme(bool dark) { darkColScheme_ = dark; }
 
-    bool getThickCursor() const { return thickCursor_; }
+    [[nodiscard]] bool getThickCursor() const { return thickCursor_; }
     void setThickCursor(bool thick) { thickCursor_ = thick; }
 
-    int getLightBgColorValue() const { return lightBgColorValue_; }
+    [[nodiscard]] int getLightBgColorValue() const { return lightBgColorValue_; }
     void setLightBgColorValue(int lightness) { lightBgColorValue_ = lightness; }
 
-    int getDarkBgColorValue() const { return darkBgColorValue_; }
+    [[nodiscard]] int getDarkBgColorValue() const { return darkBgColorValue_; }
     void setDarkBgColorValue(int darkness) { darkBgColorValue_ = darkness; }
 
-    QString getDateFormat() const { return dateFormat_; }
+    [[nodiscard]] QString getDateFormat() const { return dateFormat_; }
     void setDateFormat(const QString& format) { dateFormat_ = format; }
 
-    int getTextTabSize() const { return textTabSize_; }
+    [[nodiscard]] int getTextTabSize() const { return textTabSize_; }
     void setTextTabSize(int textTab) { textTabSize_ = textTab; }
 
-    int getDefaultRecentFilesNumber() const { return 10; }
-    int getRecentFilesNumber() const { return recentFilesNumber_; }
-    void setRecentFilesNumber(int number) { recentFilesNumber_ = std::clamp(number, 0, 50); }
-    int getCurRecentFilesNumber() const { return curRecentFilesNumber_; }
+    [[nodiscard]] int getDefaultRecentFilesNumber() const { return 10; }
+    [[nodiscard]] int getRecentFilesNumber() const { return recentFilesNumber_; }
+    void setRecentFilesNumber(int number) { recentFilesNumber_ = std::clamp(number, 0, kRecentFilesMax); }
+    [[nodiscard]] int getCurRecentFilesNumber() const { return curRecentFilesNumber_; }
 
-    bool getTabWrapAround() const { return tabWrapAround_; }
+    [[nodiscard]] bool getTabWrapAround() const { return tabWrapAround_; }
     void setTabWrapAround(bool wrap) { tabWrapAround_ = wrap; }
 
-    bool getHideSingleTab() const { return hideSingleTab_; }
+    [[nodiscard]] bool getHideSingleTab() const { return hideSingleTab_; }
     void setHideSingleTab(bool hide) { hideSingleTab_ = hide; }
 
-    QSize getWinSize() const { return winSize_; }
+    [[nodiscard]] QSize getWinSize() const { return winSize_; }
     void setWinSize(const QSize& s) { winSize_ = s; }
 
-    QSize getPrefSize() const { return prefSize_; }
+    [[nodiscard]] QSize getPrefSize() const { return prefSize_; }
     void setPrefSize(const QSize& s) { prefSize_ = s; }
 
-    QSize getDefaultStartSize() const { return QSize(700, 500); }
-    QSize getStartSize() const { return startSize_; }
+    [[nodiscard]] QSize getDefaultStartSize() const { return QSize(700, 500); }
+    [[nodiscard]] QSize getStartSize() const { return startSize_; }
     void setStartSize(const QSize& s) { startSize_ = s; }
 
-    QPoint getWinPos() const { return winPos_; }
+    [[nodiscard]] QPoint getWinPos() const { return winPos_; }
     void setWinPos(const QPoint& p) { winPos_ = p; }
 
-    int getSplitterPos() const { return splitterPos_; }
+    [[nodiscard]] int getSplitterPos() const { return splitterPos_; }
     void setSplitterPos(int pos) { splitterPos_ = pos; }
 
-    bool getNoToolbar() const { return noToolbar_; }
+    [[nodiscard]] bool getNoToolbar() const { return noToolbar_; }
     void setNoToolbar(bool noTB) { noToolbar_ = noTB; }
 
-    bool getNoMenubar() const { return noMenubar_; }
+    [[nodiscard]] bool getNoMenubar() const { return noMenubar_; }
     void setNoMenubar(bool noMB) { noMenubar_ = noMB; }
 
-    bool getMenubarTitle() const { return menubarTitle_; }
+    [[nodiscard]] bool getMenubarTitle() const { return menubarTitle_; }
     void setMenubarTitle(bool mt) { menubarTitle_ = mt; }
 
-    bool getHideSearchbar() const { return hideSearchbar_; }
+    [[nodiscard]] bool getHideSearchbar() const { return hideSearchbar_; }
     void setHideSearchbar(bool hide) { hideSearchbar_ = hide; }
 
-    bool getShowStatusbar() const { return showStatusbar_; }
+    [[nodiscard]] bool getShowStatusbar() const { return showStatusbar_; }
     void setShowStatusbar(bool show) { showStatusbar_ = show; }
 
-    bool getShowCursorPos() const { return showCursorPos_; }
+    [[nodiscard]] bool getShowCursorPos() const { return showCursorPos_; }
     void setShowCursorPos(bool show) { showCursorPos_ = show; }
 
-    bool getShowLangSelector() const { return showLangSelector_; }
+    [[nodiscard]] bool getShowLangSelector() const { return showLangSelector_; }
     void setShowLangSelector(bool show) { showLangSelector_ = show; }
 
-    bool getSidePaneMode() const { return sidePaneMode_; }
+    [[nodiscard]] bool getSidePaneMode() const { return sidePaneMode_; }
     void setSidePaneMode(bool sidePane) { sidePaneMode_ = sidePane; }
 
-    int getTabPosition() const { return tabPosition_; }
-    void setTabPosition(int pos) { tabPosition_ = pos; }
+    [[nodiscard]] int getTabPosition() const { return tabPosition_; }
+    void setTabPosition(int pos) { tabPosition_ = std::clamp(pos, kMinTabPos, kMaxTabPos); }
 
-    QFont getFont() const { return font_; }
+    [[nodiscard]] QFont getFont() const { return font_; }
     void setFont(const QFont& font) { font_ = font; }
     void resetFont();
 
-    bool getRemFont() const { return remFont_; }
+    [[nodiscard]] bool getRemFont() const { return remFont_; }
     void setRemFont(bool rem) { remFont_ = rem; }
 
-    bool getWrapByDefault() const { return wrapByDefault_; }
+    [[nodiscard]] bool getWrapByDefault() const { return wrapByDefault_; }
     void setWrapByDefault(bool wrap) { wrapByDefault_ = wrap; }
 
-    bool getIndentByDefault() const { return indentByDefault_; }
+    [[nodiscard]] bool getIndentByDefault() const { return indentByDefault_; }
     void setIndentByDefault(bool indent) { indentByDefault_ = indent; }
 
-    bool getAutoReplace() const { return autoReplace_; }
+    [[nodiscard]] bool getAutoReplace() const { return autoReplace_; }
     void setAutoReplace(bool autoR) { autoReplace_ = autoR; }
 
-    bool getAutoBracket() const { return autoBracket_; }
+    [[nodiscard]] bool getAutoBracket() const { return autoBracket_; }
     void setAutoBracket(bool autoB) { autoBracket_ = autoB; }
 
-    bool getLineByDefault() const { return lineByDefault_; }
+    [[nodiscard]] bool getLineByDefault() const { return lineByDefault_; }
     void setLineByDefault(bool line) { lineByDefault_ = line; }
 
-    bool getSyntaxByDefault() const { return syntaxByDefault_; }
+    [[nodiscard]] bool getSyntaxByDefault() const { return syntaxByDefault_; }
     void setSyntaxByDefault(bool syntax) { syntaxByDefault_ = syntax; }
 
-    bool getShowWhiteSpace() const { return showWhiteSpace_; }
+    [[nodiscard]] bool getShowWhiteSpace() const { return showWhiteSpace_; }
     void setShowWhiteSpace(bool show) { showWhiteSpace_ = show; }
 
-    bool getShowEndings() const { return showEndings_; }
+    [[nodiscard]] bool getShowEndings() const { return showEndings_; }
     void setShowEndings(bool show) { showEndings_ = show; }
 
-    bool getTextMargin() const { return textMargin_; }
+    [[nodiscard]] bool getTextMargin() const { return textMargin_; }
     void setTextMargin(bool margin) { textMargin_ = margin; }
 
-    int getDefaultVLineDistance() const { return 80; }
-    int getVLineDistance() const { return vLineDistance_; }
+    [[nodiscard]] int getDefaultVLineDistance() const { return 80; }
+    [[nodiscard]] int getVLineDistance() const { return vLineDistance_; }
     void setVLineDistance(int distance) { vLineDistance_ = distance; }
 
-    int getDefaultMaxSHSize() const { return 2; }
-    int getMaxSHSize() const { return maxSHSize_; }
+    [[nodiscard]] int getDefaultMaxSHSize() const { return 2; }
+    [[nodiscard]] int getMaxSHSize() const { return maxSHSize_; }
     void setMaxSHSize(int max) { maxSHSize_ = max; }
 
-    bool getSkipNonText() const { return skipNonText_; }
+    [[nodiscard]] bool getSkipNonText() const { return skipNonText_; }
     void setSkipNonText(bool skip) { skipNonText_ = skip; }
     /*************************/
-    bool getExecuteScripts() const { return executeScripts_; }
+    [[nodiscard]] bool getExecuteScripts() const { return executeScripts_; }
     void setExecuteScripts(bool execute) { executeScripts_ = execute; }
-    QString getExecuteCommand() const { return executeCommand_; }
+    [[nodiscard]] QString getExecuteCommand() const { return executeCommand_; }
     void setExecuteCommand(const QString& command) { executeCommand_ = command; }
     /*************************/
-    bool getAppendEmptyLine() const { return appendEmptyLine_; }
+    [[nodiscard]] bool getAppendEmptyLine() const { return appendEmptyLine_; }
     void setAppendEmptyLine(bool append) { appendEmptyLine_ = append; }
 
-    bool getRemoveTrailingSpaces() const { return removeTrailingSpaces_; }
+    [[nodiscard]] bool getRemoveTrailingSpaces() const { return removeTrailingSpaces_; }
     void setRemoveTrailingSpaces(bool remove) { removeTrailingSpaces_ = remove; }
 
-    bool getOpenInWindows() const { return openInWindows_; }
+    [[nodiscard]] bool getOpenInWindows() const { return openInWindows_; }
     void setOpenInWindows(bool windows) { openInWindows_ = windows; }
 
-    bool getNativeDialog() const { return nativeDialog_; }
+    [[nodiscard]] bool getNativeDialog() const { return nativeDialog_; }
     void setNativeDialog(bool native) { nativeDialog_ = native; }
     /*************************/
-    bool getRecentOpened() const { return recentOpened_; }
+    [[nodiscard]] bool getRecentOpened() const { return recentOpened_; }
     void setRecentOpened(bool opened) { recentOpened_ = opened; }
 
-    QStringList getRecentFiles() const { return recentFiles_; }
-    void clearRecentFiles() { recentFiles_ = QStringList(); }
+    [[nodiscard]] QStringList getRecentFiles() const { return recentFiles_; }
+    void clearRecentFiles() { recentFiles_.clear(); }
     void addRecentFile(const QString& file);
     /*************************/
-    QHash<QString, QString> customShortcutActions() const { return actions_; }
+    [[nodiscard]] QHash<QString, QString> customShortcutActions() const { return actions_; }
     void setActionShortcut(const QString& action, const QString& shortcut) { actions_.insert(action, shortcut); }
     void removeShortcut(const QString& action) {
         actions_.remove(action);
         removedActions_ << action;
     }
 
-    bool hasReservedShortcuts() const { return (!reservedShortcuts_.isEmpty()); }
-    QStringList reservedShortcuts() const { return reservedShortcuts_; }
+    [[nodiscard]] bool hasReservedShortcuts() const { return (!reservedShortcuts_.isEmpty()); }
+    [[nodiscard]] QStringList reservedShortcuts() const { return reservedShortcuts_; }
     void setReservedShortcuts(const QStringList& s) { reservedShortcuts_ = s; }
     /*************************/
-    bool getInertialScrolling() const { return inertialScrolling_; }
+    [[nodiscard]] bool getInertialScrolling() const { return inertialScrolling_; }
     void setInertialScrolling(bool inertial) { inertialScrolling_ = inertial; }
     /*************************/
-    QHash<QString, QVariant> savedCursorPos() {
+    [[nodiscard]] QHash<QString, QVariant> savedCursorPos() {
         readCursorPos();
         return cursorPos_;
     }
@@ -234,62 +242,65 @@ class Config {
         cursorPos_.clear();
     }
     /*************************/
-    bool getSaveLastFilesList() const { return saveLastFilesList_; }
+    [[nodiscard]] bool getSaveLastFilesList() const { return saveLastFilesList_; }
     void setSaveLastFilesList(bool saveList) { saveLastFilesList_ = saveList; }
 
-    QStringList getLastFiles();  // may be called only at session start and sets lasFilesCursorPos_
-    QHash<QString, QVariant> getLastFilesCursorPos() const {  // is called only after getLastFiles()
+    // may be called only at session start and sets lasFilesCursorPos_
+    [[nodiscard]] QStringList getLastFiles();
+    // is called only after getLastFiles()
+    [[nodiscard]] QHash<QString, QVariant> getLastFilesCursorPos() const {
         return lasFilesCursorPos_;
     }
     void setLastFileCursorPos(const QHash<QString, QVariant>& curPos) { lasFilesCursorPos_ = curPos; }
     /*************************/
-    bool getAutoSave() const { return autoSave_; }
+    [[nodiscard]] bool getAutoSave() const { return autoSave_; }
     void setAutoSave(bool as) { autoSave_ = as; }
-    int getAutoSaveInterval() const { return autoSaveInterval_; }
+    [[nodiscard]] int getAutoSaveInterval() const { return autoSaveInterval_; }
     void setAutoSaveInterval(int i) { autoSaveInterval_ = i; }
-    /*************************/
-    bool getSaveUnmodified() const { return saveUnmodified_; }
+    /*************************
+     */
+    [[nodiscard]] bool getSaveUnmodified() const { return saveUnmodified_; }
     void setSaveUnmodified(bool save) { saveUnmodified_ = save; }
     /*************************/
-    bool getSelectionHighlighting() const { return selectionHighlighting_; }
+    [[nodiscard]] bool getSelectionHighlighting() const { return selectionHighlighting_; }
     void setSelectionHighlighting(bool enable) { selectionHighlighting_ = enable; }
     /*************************/
-    bool getPastePaths() const { return pastePaths_; }
+    [[nodiscard]] bool getPastePaths() const { return pastePaths_; }
     void setPastePaths(bool pastPaths) { pastePaths_ = pastPaths; }
     /*************************/
-    bool getCloseWithLastTab() const { return closeWithLastTab_; }
+    [[nodiscard]] bool getCloseWithLastTab() const { return closeWithLastTab_; }
     void setCloseWithLastTab(bool close) { closeWithLastTab_ = close; }
     /*************************/
-    bool getSharedSearchHistory() const { return sharedSearchHistory_; }
+    [[nodiscard]] bool getSharedSearchHistory() const { return sharedSearchHistory_; }
     void setSharedSearchHistory(bool share) { sharedSearchHistory_ = share; }
     /*************************/
-    bool getDisableMenubarAccel() const { return disableMenubarAccel_; }
+    [[nodiscard]] bool getDisableMenubarAccel() const { return disableMenubarAccel_; }
     void setDisableMenubarAccel(bool disable) { disableMenubarAccel_ = disable; }
     /*************************/
-    bool getSysIcons() const { return sysIcons_; }
+    [[nodiscard]] bool getSysIcons() const { return sysIcons_; }
     void setSysIcons(bool sysIcons) { sysIcons_ = sysIcons; }
     /*************************/
-    QString getDictPath() const { return dictPath_; }
+    [[nodiscard]] QString getDictPath() const { return dictPath_; }
     void setDictPath(const QString& dictPath) { dictPath_ = dictPath; }
 
-    bool getSpellCheckFromStart() const { return spellCheckFromStart_; }
+    [[nodiscard]] bool getSpellCheckFromStart() const { return spellCheckFromStart_; }
     void setSpellCheckFromStart(bool fromStart) { spellCheckFromStart_ = fromStart; }
     /*************************/
-    QHash<QString, QColor> lightSyntaxColors() const { return defaultLightSyntaxColors_; }
-    QHash<QString, QColor> darkSyntaxColors() const { return defaultDarkSyntaxColors_; }
+    [[nodiscard]] QHash<QString, QColor> lightSyntaxColors() const { return defaultLightSyntaxColors_; }
+    [[nodiscard]] QHash<QString, QColor> darkSyntaxColors() const { return defaultDarkSyntaxColors_; }
 
-    QHash<QString, QColor> customSyntaxColors() const { return customSyntaxColors_; }
+    [[nodiscard]] QHash<QString, QColor> customSyntaxColors() const { return customSyntaxColors_; }
     void setCustomSyntaxColors(const QHash<QString, QColor>& colors) { customSyntaxColors_ = colors; }
 
-    int getDefaultWhiteSpaceValue() const { return darkColScheme_ ? 95 : 180; }
-    int getMinWhiteSpaceValue() const { return darkColScheme_ ? 50 : 130; }
-    int getMaxWhiteSpaceValue() const { return darkColScheme_ ? 140 : 230; }
-    int getWhiteSpaceValue() const { return whiteSpaceValue_; }
+    [[nodiscard]] int getDefaultWhiteSpaceValue() const { return darkColScheme_ ? 95 : 180; }
+    [[nodiscard]] int getMinWhiteSpaceValue() const { return darkColScheme_ ? 50 : 130; }
+    [[nodiscard]] int getMaxWhiteSpaceValue() const { return darkColScheme_ ? 140 : 230; }
+    [[nodiscard]] int getWhiteSpaceValue() const { return whiteSpaceValue_; }
     void setWhiteSpaceValue(int value);
 
-    int getCurLineHighlight() const { return curLineHighlight_; }
-    int getMinCurLineHighlight() const { return darkColScheme_ ? 0 : 210; }
-    int getMaxCurLineHighlight() const { return darkColScheme_ ? 70 : 255; }
+    [[nodiscard]] int getCurLineHighlight() const { return curLineHighlight_; }
+    [[nodiscard]] int getMinCurLineHighlight() const { return darkColScheme_ ? 0 : 210; }
+    [[nodiscard]] int getMaxCurLineHighlight() const { return darkColScheme_ ? 70 : 255; }
     void setCurLineHighlight(int value);
 
     void readSyntaxColors();
