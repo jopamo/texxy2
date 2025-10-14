@@ -8,8 +8,7 @@ find_package(Qt6 "${QT6_MINIMUM_VERSION}" REQUIRED COMPONENTS Core Gui Widgets S
 # for spell checking (see FindHUNSPELL.cmake)
 find_package(HUNSPELL "${HUNSPELL_MINIMUM_VERSION}" REQUIRED)
 
-# optional localization
-find_package(Qt6 QUIET COMPONENTS LinguistTools)
+# do not search for Qt6 LinguistTools since translations are disabled
 
 # X11 for Linux/Unix
 if(NOT WITHOUT_X11 AND UNIX AND NOT APPLE AND NOT HAIKU)
@@ -93,10 +92,11 @@ set(featherpad_SRCS
     highlighter/highlighter-tcl.cpp
     highlighter/highlighter-toml.cpp
     highlighter/highlighter-xml.cpp
-    highlighter/highlighter-yaml.cpp)
+    highlighter/highlighter-yaml.cpp
+)
 
 if(NOT WITHOUT_X11 AND UNIX AND NOT APPLE AND NOT HAIKU)
-  set(featherpad_SRCS ${featherpad_SRCS} x11.cpp)
+  list(APPEND featherpad_SRCS x11.cpp)
 endif()
 
 qt6_add_dbus_adaptor(featherpad_DBUS_SRCS
@@ -116,21 +116,14 @@ set(HELP_FILE data/help)
 
 set(EXTRA_HEADERS warningbar.h messagebox.h filedialog.h)
 
-# translations
-if(Qt6LinguistTools_FOUND)
-  file(GLOB TS_FILES data/translations/featherpad_*.ts)
-  qt6_add_translation(QM_FILES ${TS_FILES})
-  add_executable(featherpad ${featherpad_SRCS} ${featherpad_DBUS_SRCS} ${featherpad_RESOURCES} ${EXTRA_HEADERS} ${DESKTOP_FILE} ${QM_FILES})
-  if(HAIKU)
-    install(FILES ${QM_FILES} DESTINATION "${CMAKE_INSTALL_PREFIX}/translations")
-  elseif(APPLE)
-    SET_SOURCE_FILES_PROPERTIES(${QM_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/translations)
-  elseif(UNIX)
-    install(FILES ${QM_FILES} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/featherpad/translations")
-  endif()
-else(Qt6LinguistTools_FOUND)
-  add_executable(featherpad ${featherpad_SRCS} ${featherpad_DBUS_SRCS} ${featherpad_RESOURCES} ${EXTRA_HEADERS} ${DESKTOP_FILE})
-endif(Qt6LinguistTools_FOUND)
+# translations fully disabled, do not generate or install QM files
+add_executable(featherpad
+    ${featherpad_SRCS}
+    ${featherpad_DBUS_SRCS}
+    ${featherpad_RESOURCES}
+    ${EXTRA_HEADERS}
+    ${DESKTOP_FILE}
+)
 
 if(NOT WITHOUT_X11 AND UNIX AND NOT APPLE AND NOT HAIKU)
   target_link_libraries(featherpad ${Qt6Core_LIBRARIES}
@@ -152,7 +145,11 @@ else()
 endif()
 
 # make symlink
-add_custom_target(fpad_symlink ALL ${CMAKE_COMMAND} -E create_symlink featherpad fpad DEPENDS featherpad COMMENT "Creating fpad as a symlink to featherpad")
+add_custom_target(fpad_symlink ALL
+  ${CMAKE_COMMAND} -E create_symlink featherpad fpad
+  DEPENDS featherpad
+  COMMENT "Creating fpad as a symlink to featherpad"
+)
 
 install(TARGETS featherpad RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(FILES ${DESKTOP_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications")

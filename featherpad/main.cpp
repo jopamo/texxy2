@@ -11,9 +11,6 @@
 #include "x11.h"
 #endif
 
-#include <QLibraryInfo>
-#include <QTranslator>
-
 int main(int argc, char** argv) {
     const QString name = "Texxy";
     const QString version = "0.9.1";
@@ -61,33 +58,7 @@ int main(int argc, char** argv) {
 
     singleton.init(firstArg == "--standalone" || firstArg == "-s");
 
-    // with QLocale::system().name(), X and X_Y may be the same in tests
-    QStringList langs(QLocale::system().uiLanguages());
-    QString lang;
-    if (!langs.isEmpty())
-        lang = langs.first().replace('-', '_');
-
-    QTranslator qtTranslator;
-    if (qtTranslator.load("qt_" + lang, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
-        singleton.installTranslator(&qtTranslator);
-    else if (!langs.isEmpty()) {  // shouldn't be needed
-        lang = langs.first().split(QLatin1Char('_')).first();
-        if (qtTranslator.load("qt_" + lang, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
-            singleton.installTranslator(&qtTranslator);
-    }
-
-    QTranslator FPTranslator;
-#if defined(Q_OS_HAIKU)
-    if (FPTranslator.load("featherpad_" + lang, QStringLiteral(DATADIR) + "/../translations"))
-#elif defined(Q_OS_MAC)
-    if (FPTranslator.load("featherpad_" + lang,
-                          singleton.applicationDirPath() + QStringLiteral("/../Resources/translations/")))
-#else
-    if (FPTranslator.load("featherpad_" + lang, QStringLiteral(DATADIR) + "/featherpad/translations"))
-#endif
-    {
-        singleton.installTranslator(&FPTranslator);
-    }
+    // translations support removed
 
     QStringList info;
 #ifdef HAS_X11
@@ -100,11 +71,11 @@ int main(int argc, char** argv) {
         info << args;
 
     if (!singleton.isPrimaryInstance()) {
-        singleton.sendInfo(info);  // is sent to the primary instance
+        singleton.sendInfo(info);  // sent to the primary instance
         return 0;
     }
 
-    // Handle SIGQUIT, SIGINT, SIGTERM and SIGHUP (-> https://en.wikipedia.org/wiki/Unix_signal).
+    // Handle SIGQUIT, SIGINT, SIGTERM and SIGHUP -> https://en.wikipedia.org/wiki/Unix_signal
     FeatherPad::signalDaemon D;
     D.watchUnixSignals();
     QObject::connect(&D, &FeatherPad::signalDaemon::sigQUIT, &singleton, &FeatherPad::FPsingleton::quitSignalReceived);
