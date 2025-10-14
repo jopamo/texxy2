@@ -1,8 +1,8 @@
-# FeatherPad
+# Texxy
 
 ## Overview
 
-FeatherPad (by Pedram Pourang, a.k.a. Tsu Jan <tsujan2000@gmail.com>) is a lightweight Qt plain-text editor for Linux. It is independent of any desktop environment and has:
+Texxy (by Pedram Pourang, a.k.a. Tsu Jan <tsujan2000@gmail.com>) is a lightweight Qt plain-text editor for Linux. It is independent of any desktop environment and has:
 
   * Drag-and-drop support, including tab detachment and attachment;
   * X11 virtual desktop awareness (using tabs on current desktop but opening a new window on another);
@@ -25,7 +25,7 @@ FeatherPad (by Pedram Pourang, a.k.a. Tsu Jan <tsujan2000@gmail.com>) is a light
 
 Please see [INSTALL](INSTALL) for instructions on compilation, installation and translation!
 
-FeatherPad was written in GTK+ at first, then ported to Qt with more features. Its homepage is <https://github.com/tsujan/FeatherPad>.
+Texxy was written in GTK+ at first, then ported to Qt with more features. Its homepage is <https://github.com/tsujan/Texxy>.
 
 ## Credits
 
@@ -37,7 +37,7 @@ OS/2 support is added by [josch1710 at GitHub](https://github.com/josch1710).
 
 ## Screenshots
 
-The active Qt widget style determines the look and feel of every Qt application. The following screenshots are taken with a Kvantum theme and the dark color scheme of FeatherPad:
+The active Qt widget style determines the look and feel of every Qt application. The following screenshots are taken with a Kvantum theme and the dark color scheme of Texxy:
 
 ![Tabs](screenshots/Tabs.png?raw=true "Tabs")
 ![Side-Pane](screenshots/Side-Pane.png?raw=true "Side-Pane")

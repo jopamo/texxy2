@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10.0)
-project(featherpad)
+project(texxy)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -9,7 +9,7 @@ add_definitions(-Wall)
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   if(HAIKU)
-    set(CMAKE_INSTALL_PREFIX "/boot/home/config/non-packaged/apps/FeatherPad")
+    set(CMAKE_INSTALL_PREFIX "/boot/home/config/non-packaged/apps/Texxy")
   elseif(APPLE)
     set(CMAKE_INSTALL_PREFIX "/Applications")
   elseif(UNIX)
@@ -25,4 +25,4 @@ if (OS2)
   option(WITHOUT_X11 "Compiling without X11..." ON)
 endif()
 
-add_subdirectory(featherpad)
+add_subdirectory(texxy)

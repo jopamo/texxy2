@@ -1,0 +1,63 @@
+[Desktop Entry]
+Name=Texxy
+GenericName=Text Editor
+GenericName[cs]=Textový editor
+GenericName[da]=Tekstredigering
+GenericName[de]=Texteditor
+GenericName[es]=Editor de texto
+GenericName[eo]=Tekst-Redaktilo
+GenericName[fa]=ويرايشگر متن
+GenericName[hu]=Szövegszerkesztő
+GenericName[it]=Editor di testo
+GenericName[ja_JP]=テキストエディタ(Qt)
+GenericName[pl]=Edytor tekstu
+GenericName[pt]=Editor de texto
+GenericName[ru]=Текстовый редактор
+GenericName[sv]=Textredigering
+GenericName[tr]=Metin Düzenleyici
+GenericName[zh_CN]=文本编辑器
+Comment=Lightweight Qt text editor
+Comment[cs]=Nenáročný textový editor, založený na Qt
+Comment[da]=Letvægts Qt-tekstredigering
+Comment[es]=Editor de texto ligero basado en Qt
+Comment[eo]=Malpeza tekst-redaktilo bazita sur Qt
+Comment[fa]=ويرايشگر سبک متن
+Comment[hu]=Gyors szövegszerkesztő Qt-ben
+Comment[ja_JP]=軽量 Qt テキストエディタ
+Comment[pl]=Lekki edytor tekstu oparty na Qt
+Comment[pt]=Editor de texto leve baseado em Qt
+Comment[ru]=Лёгкий текстовый редактор на Qt
+Comment[sv]=Lättviktig Qt-textredigering
+Comment[tr]=Hafif Qt tabanlı metin düzenleyici
+Comment[zh_CN]=轻量级 Qt 文本编辑器
+Exec=texxy %U
+Icon=texxy
+Terminal=false
+Type=Application
+MimeType=text/plain;application/x-zerosize;
+Categories=Qt;Utility;TextEditor;
+X-KDE-StartupNotify=false;
+Keywords=Text;Editor;Plaintext;
+Actions=new-window;standalone-window;
+Name[en_US]=Texxy
+
+[Desktop Action new-window]
+Name=New Window
+Name[cs]=Nové okno
+Name[de]=Neues Fenster
+Name[eo]=Nova Fenestro
+Name[fa]=پنجره‌ی نو
+Name[it]=Nuova finestra
+Name[hu]=Új ablak
+Name[pt]=Nova Janela
+Name[sv]=Nytt Fönster
+Exec=texxy --win
+
+[Desktop Action standalone-window]
+Name=Standalone Window
+Name[de]=Eigenständiges Fenster
+Name[eo]=Memstara Fenestro
+Name[fa]=پنجره‌ی جدا
+Name[it]=Finestra indipendente
+Name[sv]=Fristående Fönster
+Exec=texxy --standalone
