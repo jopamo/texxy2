@@ -5517,7 +5517,7 @@ void FPwin::aboutDialog() {
     dialog.setMainText("<center> " + tr("A lightweight, tabbed, plain-text editor") + " </center>\n<center> " +
                        tr("based on Qt") + " </center><br><center> " + tr("Author") +
                        ": <a href='mailto:share@1g4.org?Subject=My%20Subject'>jopamo</a> </center><p></p>");
-    dialog.setTabTexts(tr("About FeatherPad"), tr("Translators"));
+    dialog.setTabTexts(tr("About FeatherPad"), tr("Whatever"));
     dialog.setWindowTitle(tr("About FeatherPad"));
     dialog.setWindowModality(Qt::WindowModal);
     dialog.exec();
