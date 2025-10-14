@@ -40,7 +40,7 @@ class Config {
    public:
     // centralized limits for guards and UI ranges
     static constexpr int kRecentFilesMax = 50;
-    static constexpr int kMaxTabPos = 3;   // 0..3 where 0 = default platform
+    static constexpr int kMaxTabPos = 3;  // 0..3 where 0 = default platform
     static constexpr int kMinTabPos = 0;
 
     Config();
@@ -248,9 +248,7 @@ class Config {
     // may be called only at session start and sets lasFilesCursorPos_
     [[nodiscard]] QStringList getLastFiles();
     // is called only after getLastFiles()
-    [[nodiscard]] QHash<QString, QVariant> getLastFilesCursorPos() const {
-        return lasFilesCursorPos_;
-    }
+    [[nodiscard]] QHash<QString, QVariant> getLastFilesCursorPos() const { return lasFilesCursorPos_; }
     void setLastFileCursorPos(const QHash<QString, QVariant>& curPos) { lasFilesCursorPos_ = curPos; }
     /*************************/
     [[nodiscard]] bool getAutoSave() const { return autoSave_; }
