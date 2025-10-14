@@ -1,52 +1,70 @@
-/*
- * Copyright (C) Pedram Pourang (aka Tsu Jan) 2014-2021 <tsujan2000@gmail.com>
- *
- * Texxy is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Texxy is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
- */
+// vscrollbar.cpp
 
 #include "vscrollbar.h"
-
-#include <algorithm>
+#include <QCursor>
+#include <QApplication>
 #include <cmath>
 
 namespace Texxy {
 
-VScrollBar::VScrollBar(QWidget* parent) : QScrollBar(parent) {}
-/*************************/
+VScrollBar::VScrollBar(QWidget* parent)
+    : QScrollBar(parent), m_accumulatedAngleDelta(0.0), m_accumulatedPixelDelta(0.0, 0.0) {}
+
 void VScrollBar::wheelEvent(QWheelEvent* event) {
-    if (!underMouse() || !event->spontaneous() ||
-        event->source() != Qt::MouseEventNotSynthesized
-        /* Apparently, Qt's hover bug is never going to be fixed! */
-        || !rect().contains(mapFromGlobal(QCursor::pos()))) {
+    // If not “real” wheel event or not over the scrollbar, fallback
+    if (!underMouse() || !event->spontaneous() || event->source() != Qt::MouseEventNotSynthesized ||
+        !rect().contains(mapFromGlobal(QCursor::pos()))) {
         QScrollBar::wheelEvent(event);
         return;
     }
-    QPoint anglePoint = event->angleDelta();
-    int delta = std::abs(anglePoint.x()) > std::abs(anglePoint.y()) ? anglePoint.x() : anglePoint.y();
 
-    /* wait until the angle delta reaches that of an ordinary mouse wheel */
-    static int _effectiveDelta = 0;
-    _effectiveDelta += delta;
-    if (std::abs(_effectiveDelta) < 120)
-        return;
+    // Prefer pixelDelta for high-resolution devices
+    QPointF pixel = event->pixelDelta();
+    QPoint angle = event->angleDelta();
 
-    int step =
-        (_effectiveDelta < 0 ? 1 : -1) * std::max(pageStep() / ((event->modifiers() & Qt::ShiftModifier) ? 2 : 1), 1);
-    _effectiveDelta = 0;
-    setSliderPosition(sliderPosition() + step);
+    int step = 0;
+
+    if (!pixel.isNull()) {
+        // accumulate pixel delta (vertical component)
+        m_accumulatedPixelDelta += pixel;
+        // decide threshold: e.g. 1 line = pageStep / 5 or something
+        qreal thresh = pageStep() / 2.0;
+        if (qAbs(m_accumulatedPixelDelta.y()) >= thresh) {
+            step = int(m_accumulatedPixelDelta.y() / thresh);
+            m_accumulatedPixelDelta.setY(0);
+        }
+    }
+    else {
+        // Use angleDelta fallback for classic mouse wheels
+        qreal deltaAngle = (std::abs(angle.x()) > std::abs(angle.y()) ? angle.x() : angle.y());
+        m_accumulatedAngleDelta += deltaAngle;
+        // Qt’s standard “one notch” is 120 units
+        if (std::abs(m_accumulatedAngleDelta) >= 120.0) {
+            step = computeStepFromAngleDelta(m_accumulatedAngleDelta);
+            m_accumulatedAngleDelta = 0.0;
+        }
+    }
+
+    if (step != 0) {
+        // Optionally accelerate if Shift pressed
+        int factor = (event->modifiers() & Qt::ShiftModifier) ? 2 : 1;
+        int scrollStep = step * std::max(pageStep() / factor, 1);
+        int newPos = sliderPosition() - scrollStep;  // minus because positive angle = wheel away = scroll up
+        newPos = qBound(minimum(), newPos, maximum());
+        setSliderPosition(newPos);
+        event->accept();
+    }
+    else {
+        // Not enough movement yet — ignore to let parent accumulate / other handlers
+        event->ignore();
+    }
+}
+
+int VScrollBar::computeStepFromAngleDelta(qreal deltaAngle) {
+    // deltaAngle > 0 means wheel moved “away” (scroll upward)
+    // map to integer step count: e.g. deltaAngle / 120, but we invert sign to scroll direction
+    int sign = (deltaAngle < 0 ? -1 : 1);
+    return -sign * int(std::abs(deltaAngle) / 120.0 + 0.5);
 }
 
 }  // namespace Texxy

@@ -503,7 +503,7 @@ void FPwin::menubarTitle(bool add, bool setTitle) {
         QRect g = ui->menuBar->actionGeometry(menubarActions.last());
         mbTitle->setStart(QApplication::layoutDirection() == Qt::RightToLeft ? ui->menuBar->width() - g.left()
                                                                              : g.right() + 1);
-        mbTitle->setHeight(g.height());
+        mbTitle->setHeightOverride(g.height());
     }
     mbTitle->show();  // needed if the menubar is already visible, i.e., not at the startup
     connect(mbTitle, &QWidget::customContextMenuRequested, this, &FPwin::tabContextMenu);
