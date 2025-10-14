@@ -103,11 +103,10 @@ void Config::readConfig() {
 
     if (settings.value("size") == "none") {
         remSize_ = false;
-    }
-    else {
+    } else {
         winSize_ = readSizeOr(settings, "size", QSize(700, 500));
-        isMaxed_ = settings.value("max", false).toBool();
-        isFull_ = settings.value("fullscreen", false).toBool();
+        isMaxed_ = readBool(settings, "max", false);
+        isFull_  = readBool(settings, "fullscreen", false);
     }
 
     startSize_ = readSizeOr(settings, "startSize", QSize(700, 500));
@@ -120,17 +119,20 @@ void Config::readConfig() {
 
     if (settings.value("splitterPos") == "none") {
         remSplitterPos_ = false;
-    }
-    else {
+    } else {
         splitterPos_ = std::max(settings.value("splitterPos", 150).toInt(), 0);
     }
 
     prefSize_ = settings.value("prefSize").toSize();
 
-    if (settings.value("noToolbar").toBool())
-        noToolbar_ = true;
-    if (settings.value("noMenubar").toBool())
-        noMenubar_ = true;
+    noToolbar_      = readBool(settings, "noToolbar", false);
+    noMenubar_      = readBool(settings, "noMenubar", false);
+    menubarTitle_   = readBool(settings, "menubarTitle", false);
+    hideSearchbar_  = readBool(settings, "hideSearchbar", false);
+    showStatusbar_  = readBool(settings, "showStatusbar", true);
+    showCursorPos_  = readBool(settings, "showCursorPos", false);
+    showLangSelector_ = readBool(settings, "showLangSelector", false);
+    sidePaneMode_   = readBool(settings, "sidePaneMode", false);
 
     // never hide both toolbar and menubar
     if (noToolbar_ && noMenubar_) {
@@ -138,51 +140,20 @@ void Config::readConfig() {
         noMenubar_ = true;
     }
 
-    if (settings.value("menubarTitle").toBool())
-        menubarTitle_ = true;
-    if (settings.value("hideSearchbar").toBool())
-        hideSearchbar_ = true;
-
-    {
-        const QVariant v = settings.value("showStatusbar");
-        if (v.isValid())
-            showStatusbar_ = v.toBool();
-    }
-
-    if (settings.value("showCursorPos").toBool())
-        showCursorPos_ = true;
-    if (settings.value("showLangSelector").toBool())
-        showLangSelector_ = true;
-    if (settings.value("sidePaneMode").toBool())
-        sidePaneMode_ = true;
-
     {
         const int pos = settings.value("tabPosition").toInt();
         if (pos > 0 && pos <= 3)
             tabPosition_ = pos;
     }
 
-    if (settings.value("tabWrapAround").toBool())
-        tabWrapAround_ = true;
-    if (settings.value("hideSingleTab").toBool())
-        hideSingleTab_ = true;
-    if (settings.value("openInWindows").toBool())
-        openInWindows_ = true;
-
-    {
-        const QVariant v = settings.value("nativeDialog");
-        if (v.isValid())
-            nativeDialog_ = v.toBool();
-    }
-
-    if (settings.value("closeWithLastTab").toBool())
-        closeWithLastTab_ = true;
-    if (settings.value("sharedSearchHistory").toBool())
-        sharedSearchHistory_ = true;
-    if (settings.value("disableMenubarAccel").toBool())
-        disableMenubarAccel_ = true;
-    if (settings.value("sysIcons").toBool())
-        sysIcons_ = true;
+    tabWrapAround_      = readBool(settings, "tabWrapAround", false);
+    hideSingleTab_      = readBool(settings, "hideSingleTab", false);
+    openInWindows_      = readBool(settings, "openInWindows", false);
+    nativeDialog_       = readBool(settings, "nativeDialog", true);
+    closeWithLastTab_   = readBool(settings, "closeWithLastTab", false);
+    sharedSearchHistory_= readBool(settings, "sharedSearchHistory", false);
+    disableMenubarAccel_= readBool(settings, "disableMenubarAccel", false);
+    sysIcons_           = readBool(settings, "sysIcons", false);
 
     settings.endGroup();
 
@@ -192,8 +163,7 @@ void Config::readConfig() {
     if (settings.value("font") == "none") {
         remFont_ = false;
         font_.setPointSize(std::max(QFont().pointSize(), 9));
-    }
-    else {
+    } else {
         const QString fontStr = settings.value("font").toString();
         if (!fontStr.isEmpty())
             font_.fromString(fontStr);
@@ -201,32 +171,19 @@ void Config::readConfig() {
             font_.setPointSize(std::max(QFont().pointSize(), 9));
     }
 
-    if (settings.value("noWrap").toBool())
-        wrapByDefault_ = false;
-    if (settings.value("noIndent").toBool())
-        indentByDefault_ = false;
-    if (settings.value("autoReplace").toBool())
-        autoReplace_ = true;
-    if (settings.value("autoBracket").toBool())
-        autoBracket_ = true;
-    if (settings.value("lineNumbers").toBool())
-        lineByDefault_ = true;
-    if (settings.value("noSyntaxHighlighting").toBool())
-        syntaxByDefault_ = false;
-    if (settings.value("showWhiteSpace").toBool())
-        showWhiteSpace_ = true;
-    if (settings.value("showEndings").toBool())
-        showEndings_ = true;
-    if (settings.value("textMargin").toBool())
-        textMargin_ = true;
-    if (settings.value("darkColorScheme").toBool())
-        darkColScheme_ = true;
-    if (settings.value("thickCursor").toBool())
-        thickCursor_ = true;
-    if (settings.value("inertialScrolling").toBool())
-        inertialScrolling_ = true;
-    if (settings.value("autoSave").toBool())
-        autoSave_ = true;
+    wrapByDefault_       = !readBool(settings, "noWrap", false);
+    indentByDefault_     = !readBool(settings, "noIndent", false);
+    autoReplace_         = readBool(settings, "autoReplace", false);
+    autoBracket_         = readBool(settings, "autoBracket", false);
+    lineByDefault_       = readBool(settings, "lineNumbers", false);
+    syntaxByDefault_     = !readBool(settings, "noSyntaxHighlighting", false);
+    showWhiteSpace_      = readBool(settings, "showWhiteSpace", false);
+    showEndings_         = readBool(settings, "showEndings", false);
+    textMargin_          = readBool(settings, "textMargin", false);
+    darkColScheme_       = readBool(settings, "darkColorScheme", false);
+    thickCursor_         = readBool(settings, "thickCursor", false);
+    inertialScrolling_   = readBool(settings, "inertialScrolling", false);
+    autoSave_            = readBool(settings, "autoSave", false);
 
     {
         const int distance = settings.value("vLineDistance").toInt();
@@ -234,42 +191,30 @@ void Config::readConfig() {
             vLineDistance_ = distance;
     }
 
-    {
-        const QVariant v = settings.value("skipNonText");
-        if (v.isValid())
-            skipNonText_ = v.toBool();
-    }
+    if (settings.value("skipNonText").isValid())
+        skipNonText_ = settings.value("skipNonText").toBool();
 
-    if (settings.value("saveUnmodified").toBool())
-        saveUnmodified_ = true;
-    if (settings.value("selectionHighlighting").toBool())
-        selectionHighlighting_ = true;
-    if (settings.value("pastePaths").toBool())
-        pastePaths_ = true;
+    saveUnmodified_         = readBool(settings, "saveUnmodified", false);
+    selectionHighlighting_  = readBool(settings, "selectionHighlighting", false);
+    pastePaths_             = readBool(settings, "pastePaths", false);
 
     maxSHSize_ = readClampedInt(settings, "maxSHSize", 2, 1, 10);
 
-    // do not let the light bg be darker than #e6e6e6
+    // keep light backgrounds light enough and dark backgrounds dark enough
     lightBgColorValue_ = readClampedInt(settings, "lightBgColorValue", 255, 230, 255);
-    // do not let the dark bg be lighter than #323232
-    darkBgColorValue_ = readClampedInt(settings, "darkBgColorValue", 15, 0, 50);
+    darkBgColorValue_  = readClampedInt(settings, "darkBgColorValue", 15, 0, 50);
 
     dateFormat_ = settings.value("dateFormat").toString();
 
-    if (settings.value("executeScripts").toBool())
-        executeScripts_ = true;
+    executeScripts_ = readBool(settings, "executeScripts", false);
     executeCommand_ = settings.value("executeCommand").toString();
 
-    {
-        const QVariant v = settings.value("appendEmptyLine");
-        if (v.isValid())
-            appendEmptyLine_ = v.toBool();
-    }
+    if (settings.value("appendEmptyLine").isValid())
+        appendEmptyLine_ = settings.value("appendEmptyLine").toBool();
 
-    if (settings.value("removeTrailingSpaces").toBool())
-        removeTrailingSpaces_ = true;
+    removeTrailingSpaces_ = readBool(settings, "removeTrailingSpaces", false);
 
-    recentFilesNumber_ = readClampedInt(settings, "recentFilesNumber", 10, 0, 50);
+    recentFilesNumber_    = readClampedInt(settings, "recentFilesNumber", 10, 0, 50);
     curRecentFilesNumber_ = recentFilesNumber_;
 
     recentFiles_ = settings.value("recentFiles").toStringList();
@@ -277,17 +222,14 @@ void Config::readConfig() {
     recentFiles_.removeDuplicates();
     pruneToLimit(recentFiles_, recentFilesNumber_);
 
-    if (settings.value("recentOpened").toBool())
-        recentOpened_ = true;
-
-    if (settings.value("saveLastFilesList").toBool())
-        saveLastFilesList_ = true;
+    recentOpened_       = readBool(settings, "recentOpened", false);
+    saveLastFilesList_  = readBool(settings, "saveLastFilesList", false);
 
     autoSaveInterval_ = readClampedInt(settings, "autoSaveInterval", 1, 1, 60);
-    textTabSize_ = readClampedInt(settings, "textTabSize", 4, 2, 10);
+    textTabSize_      = readClampedInt(settings, "textTabSize", 4, 2, 10);
 
     dictPath_ = settings.value("dictionaryPath").toString();
-    spellCheckFromStart_ = settings.value("spellCheckFromStart").toBool();
+    spellCheckFromStart_ = readBool(settings, "spellCheckFromStart", false);
 
     settings.endGroup();
 
@@ -333,7 +275,7 @@ QStringList Config::getLastFiles() {
 }
 
 void Config::readSyntaxColors() {
-    setDfaultSyntaxColors();
+    setDfaultSyntaxColors();  // keep the misspelled name to match header
     customSyntaxColors_.clear();
 
     // do not read global custom colors so user can restore defaults
@@ -389,8 +331,7 @@ void Config::writeConfig() {
         settings.setValue("size", winSize_);
         settings.setValue("max", isMaxed_);
         settings.setValue("fullscreen", isFull_);
-    }
-    else {
+    } else {
         settings.setValue("size", "none");
         settings.remove("max");
         settings.remove("fullscreen");
@@ -406,21 +347,21 @@ void Config::writeConfig() {
     else
         settings.setValue("splitterPos", "none");
 
-    settings.setValue("prefSize", prefSize_);
-    settings.setValue("startSize", startSize_);
-    settings.setValue("noToolbar", noToolbar_);
-    settings.setValue("noMenubar", noMenubar_);
+    settings.setValue("prefSize",   prefSize_);
+    settings.setValue("startSize",  startSize_);
+    settings.setValue("noToolbar",  noToolbar_);
+    settings.setValue("noMenubar",  noMenubar_);
     settings.setValue("menubarTitle", menubarTitle_);
     settings.setValue("hideSearchbar", hideSearchbar_);
     settings.setValue("showStatusbar", showStatusbar_);
     settings.setValue("showCursorPos", showCursorPos_);
     settings.setValue("showLangSelector", showLangSelector_);
     settings.setValue("sidePaneMode", sidePaneMode_);
-    settings.setValue("tabPosition", tabPosition_);
+    settings.setValue("tabPosition",  tabPosition_);
     settings.setValue("tabWrapAround", tabWrapAround_);
     settings.setValue("hideSingleTab", hideSingleTab_);
     settings.setValue("openInWindows", openInWindows_);
-    settings.setValue("nativeDialog", nativeDialog_);
+    settings.setValue("nativeDialog",  nativeDialog_);
     settings.setValue("closeWithLastTab", closeWithLastTab_);
     settings.setValue("sharedSearchHistory", sharedSearchHistory_);
     settings.setValue("disableMenubarAccel", disableMenubarAccel_);
@@ -520,13 +461,11 @@ void Config::writeSyntaxColors() {
         if (whiteSpaceValue_ != getDefaultWhiteSpaceValue() || curLineHighlight_ != -1) {
             if (settingsColors.allKeys().size() > 2)
                 settingsColors.clear();
-        }
-        else {
+        } else {
             settingsColors.clear();
             return;
         }
-    }
-    else {
+    } else {
         for (auto it = customSyntaxColors_.cbegin(); it != customSyntaxColors_.cend(); ++it)
             settingsColors.setValue(it.key(), it.value().name());
     }
@@ -611,29 +550,31 @@ QString Config::validatedShortcut(const QVariant v, bool* isValid) {
 // keep this name to match the private declaration in config.h
 void Config::setDfaultSyntaxColors() {
     if (defaultLightSyntaxColors_.isEmpty()) {
-        defaultLightSyntaxColors_.insert("function", QColor(Qt::blue));
-        defaultLightSyntaxColors_.insert("BuiltinFunction", QColor(Qt::magenta));
-        defaultLightSyntaxColors_.insert("comment", QColor(Qt::red));
-        defaultLightSyntaxColors_.insert("quote", QColor(Qt::darkGreen));
-        defaultLightSyntaxColors_.insert("type", QColor(Qt::darkMagenta));
-        defaultLightSyntaxColors_.insert("keyWord", QColor(Qt::darkBlue));
-        defaultLightSyntaxColors_.insert("number", QColor(150, 85, 0));
-        defaultLightSyntaxColors_.insert("regex", QColor(150, 0, 0));
-        defaultLightSyntaxColors_.insert("xmlElement", QColor(126, 0, 230));
-        defaultLightSyntaxColors_.insert("cssValue", QColor(0, 110, 110));
-        defaultLightSyntaxColors_.insert("other", QColor(100, 100, 0));
+        // light theme defaults with high contrast and distinct hues
+        defaultLightSyntaxColors_.insert("function",       QColor("#005CC5"));
+        defaultLightSyntaxColors_.insert("BuiltinFunction",QColor("#6F42C1"));
+        defaultLightSyntaxColors_.insert("comment",        QColor("#6A737D"));
+        defaultLightSyntaxColors_.insert("quote",          QColor("#22863A"));
+        defaultLightSyntaxColors_.insert("type",           QColor("#A15600"));
+        defaultLightSyntaxColors_.insert("keyWord",        QColor("#D73A49"));
+        defaultLightSyntaxColors_.insert("number",         QColor("#E36209"));
+        defaultLightSyntaxColors_.insert("regex",          QColor("#0366D6"));
+        defaultLightSyntaxColors_.insert("xmlElement",     QColor("#7D4EAC"));
+        defaultLightSyntaxColors_.insert("cssValue",       QColor("#116262"));
+        defaultLightSyntaxColors_.insert("other",          QColor("#5D4A00"));
 
-        defaultDarkSyntaxColors_.insert("function", QColor(85, 227, 255));
-        defaultDarkSyntaxColors_.insert("BuiltinFunction", QColor(Qt::magenta));
-        defaultDarkSyntaxColors_.insert("comment", QColor(255, 120, 120));
-        defaultDarkSyntaxColors_.insert("quote", QColor(Qt::green));
-        defaultDarkSyntaxColors_.insert("type", QColor(255, 153, 255));
-        defaultDarkSyntaxColors_.insert("keyWord", QColor(65, 154, 255));
-        defaultDarkSyntaxColors_.insert("number", QColor(255, 205, 0));
-        defaultDarkSyntaxColors_.insert("regex", QColor(255, 160, 0));
-        defaultDarkSyntaxColors_.insert("xmlElement", QColor(255, 255, 1));
-        defaultDarkSyntaxColors_.insert("cssValue", QColor(150, 255, 0));
-        defaultDarkSyntaxColors_.insert("other", QColor(Qt::yellow));
+        // dark theme defaults tuned for low-glow displays and readability
+        defaultDarkSyntaxColors_.insert("function",        QColor("#4FC1FF"));
+        defaultDarkSyntaxColors_.insert("BuiltinFunction", QColor("#C792EA"));
+        defaultDarkSyntaxColors_.insert("comment",         QColor("#7F848E"));
+        defaultDarkSyntaxColors_.insert("quote",           QColor("#C3E88D"));
+        defaultDarkSyntaxColors_.insert("type",            QColor("#FFCB6B"));
+        defaultDarkSyntaxColors_.insert("keyWord",         QColor("#89DDFF"));
+        defaultDarkSyntaxColors_.insert("number",          QColor("#F78C6C"));
+        defaultDarkSyntaxColors_.insert("regex",           QColor("#F07178"));
+        defaultDarkSyntaxColors_.insert("xmlElement",      QColor("#FF5370"));
+        defaultDarkSyntaxColors_.insert("cssValue",        QColor("#82AAFF"));
+        defaultDarkSyntaxColors_.insert("other",           QColor("#FAD000"));
     }
 }
 

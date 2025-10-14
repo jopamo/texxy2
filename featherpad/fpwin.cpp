@@ -291,11 +291,6 @@ FPwin::FPwin(QWidget* parent) : QMainWindow(parent), dummyWidget(nullptr), ui(ne
     QShortcut* focusSidePane = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Escape), this);
     connect(focusSidePane, &QShortcut::activated, this, &FPwin::focusSidePane);
 
-    /* this workaround, for the RTL bug in QPlainTextEdit, isn't needed
-       because a better workaround is included in textedit.cpp */
-    /*QShortcut *align = new QShortcut (QKeySequence (tr ("Ctrl+Shift+A", "Alignment")), this);
-    connect (align, &QShortcut::activated, this, &FPwin::align);*/
-
     /* exiting a process */
     QShortcut* kill = new QShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_E), this);
     connect(kill, &QShortcut::activated, this, &FPwin::exitProcess);
