@@ -165,6 +165,7 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
     connect(ui->actionClose, &QAction::triggered, this, &TexxyWindow::closePage);
     connect(ui->tabWidget, &QTabWidget::tabCloseRequested, this, &TexxyWindow::closeTabAtIndex);
     connect(ui->actionOpen, &QAction::triggered, this, &TexxyWindow::fileOpen);
+    connect(ui->actionOpenHex, &QAction::triggered, this, &TexxyWindow::fileOpenHex);
     connect(ui->actionReload, &QAction::triggered, this, &TexxyWindow::reload);
     connect(aGroup_, &QActionGroup::triggered, this, &TexxyWindow::enforceEncoding);
     connect(ui->actionSave, &QAction::triggered, this, [this] { saveFile(false); });
@@ -627,6 +628,7 @@ void TexxyWindow::applyConfigOnStarting() {
     if (useSys) {
         setIconTheme(ui->actionNew, "document-new");
         setIconTheme(ui->actionOpen, "document-open");
+        setIconTheme(ui->actionOpenHex, "document-open");
         setIconTheme(ui->actionSession, "bookmark-new");
         setIconTheme(ui->menuOpenRecently->menuAction(), "document-open-recent");
         setIconTheme(ui->actionClearRecent, "edit-clear");
@@ -670,6 +672,7 @@ void TexxyWindow::applyConfigOnStarting() {
     else {
         setIconRes(ui->actionNew, ":icons/document-new.svg");
         setIconRes(ui->actionOpen, ":icons/document-open.svg");
+        setIconRes(ui->actionOpenHex, ":icons/document-open.svg");
         setIconRes(ui->actionSession, ":icons/session.svg");
         setIconRes(ui->menuOpenRecently->menuAction(), ":icons/document-open-recent.svg");
         setIconRes(ui->actionClearRecent, ":icons/edit-clear.svg");
@@ -2197,13 +2200,18 @@ void TexxyWindow::loadText(const QString& fileName,
                      int restoreCursor,
                      int posInLine,
                      bool enforceUneditable,
-                     bool multiple) {
+                     bool multiple,
+                     bool openAsHex) {
     ++loadingProcesses_;
     QString charset;
-    if (enforceEncod)
+    if (openAsHex)
+        charset = QStringLiteral("Hex");
+    else if (enforceEncod)
         charset = checkToEncoding();
-    Loading* thread = new Loading(fileName, charset, reload, restoreCursor, posInLine, enforceUneditable, multiple);
-    thread->setSkipNonText(static_cast<TexxyApplication*>(qApp)->getConfig().getSkipNonText());
+    Loading* thread =
+        new Loading(fileName, charset, reload, restoreCursor, posInLine, enforceUneditable || openAsHex, multiple);
+    const bool skipNonText = !openAsHex && static_cast<TexxyApplication*>(qApp)->getConfig().getSkipNonText();
+    thread->setSkipNonText(skipNonText);
     connect(thread, &Loading::completed, this, &TexxyWindow::addText);
     connect(thread, &Loading::finished, thread, &QObject::deleteLater);
     thread->start();
@@ -2625,6 +2633,14 @@ void TexxyWindow::newTabFromRecent() {
 }
 /*************************/
 void TexxyWindow::fileOpen() {
+    openFilesFromDialog(false);
+}
+/*************************/
+void TexxyWindow::fileOpenHex() {
+    openFilesFromDialog(true);
+}
+/*************************/
+void TexxyWindow::openFilesFromDialog(bool openAsHex) {
     if (isLoading())
         return;
 
@@ -2669,7 +2685,7 @@ void TexxyWindow::fileOpen() {
     }
     FileDialog dialog(this, static_cast<TexxyApplication*>(qApp)->getConfig().getNativeDialog());
     dialog.setAcceptMode(QFileDialog::AcceptOpen);
-    dialog.setWindowTitle(tr("Open file..."));
+    dialog.setWindowTitle(openAsHex ? tr("Open file as hex...") : tr("Open file..."));
     dialog.setFileMode(QFileDialog::ExistingFiles);
     dialog.setNameFilter(filter);
     /*dialog.setLabelText (QFileDialog::Accept, tr ("Open"));
@@ -2685,7 +2701,7 @@ void TexxyWindow::fileOpen() {
         const QStringList files = dialog.selectedFiles();
         bool multiple(files.count() > 1 || isLoading());
         for (const QString& file : files)
-            newTabFromName(file, 0, 0, multiple);
+            loadText(file, false, false, 0, 0, openAsHex, multiple, openAsHex);
     }
     updateShortcuts(false);
 }

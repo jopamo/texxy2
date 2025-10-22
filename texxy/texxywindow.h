@@ -104,6 +104,7 @@ class TexxyWindow : public QMainWindow {
     void closePreviousPages();
     void closeOtherPages();
     void fileOpen();
+    void fileOpenHex();
     void reload();
     void enforceEncoding(QAction* a);
     void cutText();
@@ -215,7 +216,9 @@ class TexxyWindow : public QMainWindow {
                   int restoreCursor = 0,
                   int posInLine = 0,
                   bool enforceUneditable = false,
-                  bool multiple = false);
+                  bool multiple = false,
+                  bool openAsHex = false);
+    void openFilesFromDialog(bool openAsHex);
     bool alreadyOpen(TabPage* tabPage) const;
     void setWinTitle(const QString& title);
     void setTitle(const QString& fileName, int tabIndex = -1);

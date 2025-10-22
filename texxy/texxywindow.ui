@@ -156,6 +156,7 @@
     </widget>
     <addaction name="actionNew"/>
     <addaction name="actionOpen"/>
+    <addaction name="actionOpenHex"/>
     <addaction name="menuOpenRecently"/>
     <addaction name="actionSession"/>
     <addaction name="actionSidePane"/>
@@ -478,6 +479,14 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+O</string>
+   </property>
+ </action>
+  <action name="actionOpenHex">
+   <property name="text">
+    <string>Open as &amp;Hex</string>
+   </property>
+   <property name="toolTip">
+    <string>Open a file in hexadecimal view</string>
    </property>
   </action>
   <action name="actionSave">

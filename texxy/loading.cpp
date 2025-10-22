@@ -17,6 +17,53 @@ static inline void appendHugeLineNotice(QString& out) {
     out += msg;
 }
 
+static inline QChar hexDigit(quint8 value) {
+    return QLatin1Char(value < 10 ? static_cast<char>('0' + value) : static_cast<char>('A' + value - 10));
+}
+
+static QString toHexView(const uchar* data, qint64 length) {
+    if (!data || length <= 0)
+        return QString();
+
+    constexpr int bytesPerLine = 16;
+    const qint64 lineCount = (length + bytesPerLine - 1) / bytesPerLine;
+    QString out;
+    out.reserve(static_cast<int>(lineCount * (bytesPerLine * 3 + bytesPerLine + 16)));
+
+    for (qint64 offset = 0; offset < length; offset += bytesPerLine) {
+        const int lineLen = static_cast<int>(qMin<qint64>(bytesPerLine, length - offset));
+        out.append(QStringLiteral("%1  ").arg(offset, 8, 16, QLatin1Char('0')).toUpper());
+
+        for (int i = 0; i < bytesPerLine; ++i) {
+            if (i < lineLen) {
+                const uchar byte = data[offset + i];
+                out.append(hexDigit(byte >> 4));
+                out.append(hexDigit(byte & 0x0F));
+            }
+            else {
+                out.append(QStringLiteral("  "));
+            }
+
+            if (i != bytesPerLine - 1)
+                out.append(QLatin1Char(' '));
+            if (i == 7)
+                out.append(QLatin1Char(' '));
+        }
+
+        out.append(QStringLiteral(" |"));
+        for (int i = 0; i < lineLen; ++i) {
+            const uchar byte = data[offset + i];
+            out.append((byte >= 0x20 && byte <= 0x7E) ? QLatin1Char(byte) : QLatin1Char('.'));
+        }
+        for (int i = lineLen; i < bytesPerLine; ++i)
+            out.append(QLatin1Char(' '));
+
+        out.append(QStringLiteral("|\n"));
+    }
+
+    return out;
+}
+
 // scan buffer to
 //  - detect presence of NULs
 //  - compute first huge-line cutoff index if any
@@ -136,7 +183,8 @@ void Loading::run() {
     }
 
     QFile file(fname_);
-    const qint64 sizeLimit = 100LL * 1024 * 1024;  // 100 MiB guard
+    const bool hexMode = charset_.compare(QStringLiteral("Hex"), Qt::CaseInsensitive) == 0;
+    const qint64 sizeLimit = hexMode ? 32LL * 1024 * 1024 : 100LL * 1024 * 1024;  // tighter guard for hex view
     if (file.size() > sizeLimit) {
         emit completed(QString(), fname_);
         return;
@@ -158,6 +206,23 @@ void Loading::run() {
 
     const uchar* const begin = map;
     const uchar* const end = map + (map ? (fallback.isEmpty() ? fsz : fallback.size()) : 0);
+
+    if (hexMode) {
+        const qint64 len = end - begin;
+        QString hexText = toHexView(begin, len);
+        file.close();
+        forceUneditable_ = true;
+        emit completed(hexText,
+                       fname_,
+                       QStringLiteral("Hex"),
+                       false,
+                       reload_,
+                       restoreCursor_,
+                       posInLine_,
+                       forceUneditable_,
+                       multiple_);
+        return;
+    }
 
     const bool enforced = !charset_.isEmpty();
 
