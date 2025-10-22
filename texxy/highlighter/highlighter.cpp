@@ -791,7 +791,7 @@ Highlighter::Highlighter(QTextDocument* parent,
             "dircolors|"
             "dirname|dirs|dmesg|dnsdomainname|domainname|dpkg|du|dumpkeys|ed|egrep|eject|emacs|env|ethtool|expect|"
             "expand|"
-            "expr|fbset|fdformat|fdisk|texxy|fgconsole|fgrep|file|find|finger|flex|fmt|fold|format|fpad|free|fsck|"
+"expr|fbset|fdformat|fdisk|texxy|fgconsole|fgrep|file|find|finger|flex|fmt|fold|format|free|fsck|"
             "ftp|"
             "funzip|fuser|gawk|gc|gcc|gdb|getent|getkeycodes|getopt|gettext|gettextize|gio|git|gmake|gocr|gpg|grep|"
             "groff|"

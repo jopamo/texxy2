@@ -290,7 +290,7 @@ bool SearchBar::matchRegex() const {
     return button_regex_->isChecked();
 }
 /*************************/
-// Used only in a workaround (-> FPwin::updateShortcuts())
+// Used only in a workaround (-> TexxyWindow::updateShortcuts())
 void SearchBar::updateShortcuts(bool disable) {
     if (disable) {
         toolButton_nxt_->setShortcut(QKeySequence());

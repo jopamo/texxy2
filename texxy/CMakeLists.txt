@@ -48,7 +48,8 @@ set(texxy_SRCS
     main.cpp
     singleton.cpp
     signalDaemon.cpp
-    fpwin.cpp
+    texxy.cpp
+    save.cpp
     encoding.cpp
     tabwidget.cpp
     menubartitle.cpp
@@ -102,19 +103,19 @@ endif()
 qt6_add_dbus_adaptor(texxy_DBUS_SRCS
     org.texxy.Application.xml
     singleton.h
-    Texxy::FPsingleton
+    Texxy::TexxyApplication
     texxyadaptor
     TexxyAdaptor
 )
 
-set(texxy_RESOURCES data/fp.qrc)
+set(texxy_RESOURCES data/texxy.qrc)
 set(DESKTOP_FILE data/texxy.desktop)
 set(METAINFO_FILE data/texxy.metainfo.xml)
 set(ICON_FILE data/texxy.svg)
 set(HELP_FILE data/help)
 # file(GLOB HELP_TR_FILES data/help_*)
 
-set(EXTRA_HEADERS warningbar.h messagebox.h filedialog.h)
+set(EXTRA_HEADERS warningbar.h messagebox.h filedialog.h texxywindow.h)
 
 # translations fully disabled, do not generate or install QM files
 add_executable(texxy
@@ -144,16 +145,8 @@ else()
                                    ${HUNSPELL_LIBRARIES})
 endif()
 
-# make symlink
-add_custom_target(fpad_symlink ALL
-  ${CMAKE_COMMAND} -E create_symlink texxy fpad
-  DEPENDS texxy
-  COMMENT "Creating fpad as a symlink to texxy"
-)
-
 install(TARGETS texxy RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(FILES ${DESKTOP_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications")
 install(FILES ${METAINFO_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/metainfo")
 install(FILES ${ICON_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/scalable/apps")
 install(FILES ${HELP_FILE} DESTINATION "${CMAKE_INSTALL_PREFIX}/share/texxy")
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fpad DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)

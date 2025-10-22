@@ -1,9 +1,10 @@
 /*
- * texxy/fpwin.cpp
+ * texxy/texxy.cpp
  */
 
+#include "texxywindow.h"
 #include "singleton.h"
-#include "ui_fp.h"
+#include "ui_texxywindow.h"
 #include "ui_about.h"
 #include "encoding.h"
 #include "filedialog.h"
@@ -26,11 +27,9 @@
 #include <QWindow>
 #include <QScrollBar>
 #include <QWidgetAction>
-#include <fstream>  // std::ofstream
 #include <QPrinter>
 #include <QClipboard>
 #include <QProcess>
-#include <QTextDocumentWriter>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QDesktopServices>
@@ -47,7 +46,7 @@
 
 namespace Texxy {
 
-FPwin::FPwin(QWidget* parent) : QMainWindow(parent), dummyWidget(nullptr), ui(new Ui::FPwin) {
+TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nullptr), ui(new Ui::TexxyWindow) {
     ui->setupUi(this);
 
     locked_ = false;
@@ -153,107 +152,107 @@ FPwin::FPwin(QWidget* parent) : QMainWindow(parent), dummyWidget(nullptr), ui(ne
     ui->actionUTF_8->setChecked(true);
     ui->actionOther->setDisabled(true);
 
-    if (static_cast<FPsingleton*>(qApp)->isStandAlone())
+    if (static_cast<TexxyApplication*>(qApp)->isStandAlone())
         ui->tabWidget->noTabDND();
 
     connect(ui->actionQuit, &QAction::triggered, this, &QWidget::close);
-    connect(ui->actionNew, &QAction::triggered, this, &FPwin::newTab);
-    connect(ui->tabWidget->tabBar(), &TabBar::addEmptyTab, this, &FPwin::newTab);
-    connect(ui->actionDetachTab, &QAction::triggered, this, &FPwin::detachTab);
-    connect(ui->actionRightTab, &QAction::triggered, this, &FPwin::nextTab);
-    connect(ui->actionLeftTab, &QAction::triggered, this, &FPwin::previousTab);
-    connect(ui->actionLastActiveTab, &QAction::triggered, this, &FPwin::lastActiveTab);
-    connect(ui->actionClose, &QAction::triggered, this, &FPwin::closePage);
-    connect(ui->tabWidget, &QTabWidget::tabCloseRequested, this, &FPwin::closeTabAtIndex);
-    connect(ui->actionOpen, &QAction::triggered, this, &FPwin::fileOpen);
-    connect(ui->actionReload, &QAction::triggered, this, &FPwin::reload);
-    connect(aGroup_, &QActionGroup::triggered, this, &FPwin::enforceEncoding);
+    connect(ui->actionNew, &QAction::triggered, this, &TexxyWindow::newTab);
+    connect(ui->tabWidget->tabBar(), &TabBar::addEmptyTab, this, &TexxyWindow::newTab);
+    connect(ui->actionDetachTab, &QAction::triggered, this, &TexxyWindow::detachTab);
+    connect(ui->actionRightTab, &QAction::triggered, this, &TexxyWindow::nextTab);
+    connect(ui->actionLeftTab, &QAction::triggered, this, &TexxyWindow::previousTab);
+    connect(ui->actionLastActiveTab, &QAction::triggered, this, &TexxyWindow::lastActiveTab);
+    connect(ui->actionClose, &QAction::triggered, this, &TexxyWindow::closePage);
+    connect(ui->tabWidget, &QTabWidget::tabCloseRequested, this, &TexxyWindow::closeTabAtIndex);
+    connect(ui->actionOpen, &QAction::triggered, this, &TexxyWindow::fileOpen);
+    connect(ui->actionReload, &QAction::triggered, this, &TexxyWindow::reload);
+    connect(aGroup_, &QActionGroup::triggered, this, &TexxyWindow::enforceEncoding);
     connect(ui->actionSave, &QAction::triggered, this, [this] { saveFile(false); });
     connect(ui->actionSaveAs, &QAction::triggered, this, [this] { saveFile(false); });
     connect(ui->actionSaveCodec, &QAction::triggered, this, [this] { saveFile(false); });
     connect(ui->actionSaveAllFiles, &QAction::triggered, this, [this] { saveAllFiles(true); });
 
-    connect(ui->actionCut, &QAction::triggered, this, &FPwin::cutText);
-    connect(ui->actionCopy, &QAction::triggered, this, &FPwin::copyText);
-    connect(ui->actionPaste, &QAction::triggered, this, &FPwin::pasteText);
-    connect(ui->actionSoftTab, &QAction::triggered, this, &FPwin::toSoftTabs);
-    connect(ui->actionDate, &QAction::triggered, this, &FPwin::insertDate);
-    connect(ui->actionDelete, &QAction::triggered, this, &FPwin::deleteText);
-    connect(ui->actionSelectAll, &QAction::triggered, this, &FPwin::selectAllText);
+    connect(ui->actionCut, &QAction::triggered, this, &TexxyWindow::cutText);
+    connect(ui->actionCopy, &QAction::triggered, this, &TexxyWindow::copyText);
+    connect(ui->actionPaste, &QAction::triggered, this, &TexxyWindow::pasteText);
+    connect(ui->actionSoftTab, &QAction::triggered, this, &TexxyWindow::toSoftTabs);
+    connect(ui->actionDate, &QAction::triggered, this, &TexxyWindow::insertDate);
+    connect(ui->actionDelete, &QAction::triggered, this, &TexxyWindow::deleteText);
+    connect(ui->actionSelectAll, &QAction::triggered, this, &TexxyWindow::selectAllText);
 
-    connect(ui->actionUpperCase, &QAction::triggered, this, &FPwin::upperCase);
-    connect(ui->actionLowerCase, &QAction::triggered, this, &FPwin::lowerCase);
-    connect(ui->actionStartCase, &QAction::triggered, this, &FPwin::startCase);
+    connect(ui->actionUpperCase, &QAction::triggered, this, &TexxyWindow::upperCase);
+    connect(ui->actionLowerCase, &QAction::triggered, this, &TexxyWindow::lowerCase);
+    connect(ui->actionStartCase, &QAction::triggered, this, &TexxyWindow::startCase);
 
-    connect(ui->menuEdit, &QMenu::aboutToShow, this, &FPwin::showingEditMenu);
-    connect(ui->menuEdit, &QMenu::aboutToHide, this, &FPwin::hidngEditMenu);
+    connect(ui->menuEdit, &QMenu::aboutToShow, this, &TexxyWindow::showingEditMenu);
+    connect(ui->menuEdit, &QMenu::aboutToHide, this, &TexxyWindow::hidngEditMenu);
 
-    connect(ui->actionSortLines, &QAction::triggered, this, &FPwin::sortLines);
-    connect(ui->actionRSortLines, &QAction::triggered, this, &FPwin::sortLines);
+    connect(ui->actionSortLines, &QAction::triggered, this, &TexxyWindow::sortLines);
+    connect(ui->actionRSortLines, &QAction::triggered, this, &TexxyWindow::sortLines);
 
-    connect(ui->ActionRmDupeSort, &QAction::triggered, this, &FPwin::rmDupeSort);
-    connect(ui->ActionRmDupeRSort, &QAction::triggered, this, &FPwin::rmDupeSort);
+    connect(ui->ActionRmDupeSort, &QAction::triggered, this, &TexxyWindow::rmDupeSort);
+    connect(ui->ActionRmDupeRSort, &QAction::triggered, this, &TexxyWindow::rmDupeSort);
 
-    connect(ui->ActionSpaceDupeSort, &QAction::triggered, this, &FPwin::spaceDupeSort);
-    connect(ui->ActionSpaceDupeRSort, &QAction::triggered, this, &FPwin::spaceDupeSort);
+    connect(ui->ActionSpaceDupeSort, &QAction::triggered, this, &TexxyWindow::spaceDupeSort);
+    connect(ui->ActionSpaceDupeRSort, &QAction::triggered, this, &TexxyWindow::spaceDupeSort);
 
-    connect(ui->actionEdit, &QAction::triggered, this, &FPwin::makeEditable);
+    connect(ui->actionEdit, &QAction::triggered, this, &TexxyWindow::makeEditable);
 
-    connect(ui->actionSession, &QAction::triggered, this, &FPwin::manageSessions);
+    connect(ui->actionSession, &QAction::triggered, this, &TexxyWindow::manageSessions);
 
-    connect(ui->actionRun, &QAction::triggered, this, &FPwin::executeProcess);
+    connect(ui->actionRun, &QAction::triggered, this, &TexxyWindow::executeProcess);
 
-    connect(ui->actionUndo, &QAction::triggered, this, &FPwin::undoing);
-    connect(ui->actionRedo, &QAction::triggered, this, &FPwin::redoing);
+    connect(ui->actionUndo, &QAction::triggered, this, &TexxyWindow::undoing);
+    connect(ui->actionRedo, &QAction::triggered, this, &TexxyWindow::redoing);
 
-    connect(ui->tabWidget, &QTabWidget::currentChanged, this, &FPwin::onTabChanged);
-    connect(ui->tabWidget, &TabWidget::currentTabChanged, this, &FPwin::tabSwitch);
+    connect(ui->tabWidget, &QTabWidget::currentChanged, this, &TexxyWindow::onTabChanged);
+    connect(ui->tabWidget, &TabWidget::currentTabChanged, this, &TexxyWindow::tabSwitch);
     connect(ui->tabWidget, &TabWidget::hasLastActiveTab,
             [this](bool hasLastActive) { ui->actionLastActiveTab->setEnabled(hasLastActive); });
 
     /* the tab will be detached after the DND is finished */
-    connect(ui->tabWidget->tabBar(), &TabBar::tabDetached, this, &FPwin::detachTab, Qt::QueuedConnection);
+    connect(ui->tabWidget->tabBar(), &TabBar::tabDetached, this, &TexxyWindow::detachTab, Qt::QueuedConnection);
 
-    connect(ui->tabWidget->tabBar(), &TabBar::hideTabBar, this, &FPwin::toggleSidePane);
+    connect(ui->tabWidget->tabBar(), &TabBar::hideTabBar, this, &TexxyWindow::toggleSidePane);
     ui->tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(ui->tabWidget->tabBar(), &QWidget::customContextMenuRequested, this, &FPwin::tabContextMenu);
-    connect(ui->actionCopyName, &QAction::triggered, this, &FPwin::copyTabFileName);
-    connect(ui->actionCopyPath, &QAction::triggered, this, &FPwin::copyTabFilePath);
-    connect(ui->actionCloseAll, &QAction::triggered, this, &FPwin::closeAllPages);
-    connect(ui->actionCloseRight, &QAction::triggered, this, &FPwin::closeNextPages);
-    connect(ui->actionCloseLeft, &QAction::triggered, this, &FPwin::closePreviousPages);
-    connect(ui->actionCloseOther, &QAction::triggered, this, &FPwin::closeOtherPages);
+    connect(ui->tabWidget->tabBar(), &QWidget::customContextMenuRequested, this, &TexxyWindow::tabContextMenu);
+    connect(ui->actionCopyName, &QAction::triggered, this, &TexxyWindow::copyTabFileName);
+    connect(ui->actionCopyPath, &QAction::triggered, this, &TexxyWindow::copyTabFilePath);
+    connect(ui->actionCloseAll, &QAction::triggered, this, &TexxyWindow::closeAllPages);
+    connect(ui->actionCloseRight, &QAction::triggered, this, &TexxyWindow::closeNextPages);
+    connect(ui->actionCloseLeft, &QAction::triggered, this, &TexxyWindow::closePreviousPages);
+    connect(ui->actionCloseOther, &QAction::triggered, this, &TexxyWindow::closeOtherPages);
 
-    connect(ui->actionFont, &QAction::triggered, this, &FPwin::fontDialog);
+    connect(ui->actionFont, &QAction::triggered, this, &TexxyWindow::fontDialog);
 
-    connect(ui->actionFind, &QAction::triggered, this, &FPwin::showHideSearch);
-    connect(ui->actionJump, &QAction::triggered, this, &FPwin::jumpTo);
-    connect(ui->spinBox, &QAbstractSpinBox::editingFinished, this, &FPwin::goTo);
+    connect(ui->actionFind, &QAction::triggered, this, &TexxyWindow::showHideSearch);
+    connect(ui->actionJump, &QAction::triggered, this, &TexxyWindow::jumpTo);
+    connect(ui->spinBox, &QAbstractSpinBox::editingFinished, this, &TexxyWindow::goTo);
 
-    connect(ui->actionLineNumbers, &QAction::toggled, this, &FPwin::showLN);
-    connect(ui->actionWrap, &QAction::triggered, this, &FPwin::toggleWrapping);
-    connect(ui->actionSyntax, &QAction::triggered, this, &FPwin::toggleSyntaxHighlighting);
-    connect(ui->actionIndent, &QAction::triggered, this, &FPwin::toggleIndent);
+    connect(ui->actionLineNumbers, &QAction::toggled, this, &TexxyWindow::showLN);
+    connect(ui->actionWrap, &QAction::triggered, this, &TexxyWindow::toggleWrapping);
+    connect(ui->actionSyntax, &QAction::triggered, this, &TexxyWindow::toggleSyntaxHighlighting);
+    connect(ui->actionIndent, &QAction::triggered, this, &TexxyWindow::toggleIndent);
 
-    connect(ui->actionPreferences, &QAction::triggered, this, &FPwin::prefDialog);
+    connect(ui->actionPreferences, &QAction::triggered, this, &TexxyWindow::prefDialog);
 
-    connect(ui->actionCheckSpelling, &QAction::triggered, this, &FPwin::checkSpelling);
-    connect(ui->actionUserDict, &QAction::triggered, this, &FPwin::userDict);
+    connect(ui->actionCheckSpelling, &QAction::triggered, this, &TexxyWindow::checkSpelling);
+    connect(ui->actionUserDict, &QAction::triggered, this, &TexxyWindow::userDict);
 
-    connect(ui->actionReplace, &QAction::triggered, this, &FPwin::replaceDock);
-    connect(ui->toolButtonNext, &QAbstractButton::clicked, this, &FPwin::replace);
-    connect(ui->toolButtonPrv, &QAbstractButton::clicked, this, &FPwin::replace);
-    connect(ui->toolButtonAll, &QAbstractButton::clicked, this, &FPwin::replaceAll);
-    connect(ui->dockReplace, &QDockWidget::visibilityChanged, this, &FPwin::dockVisibilityChanged);
-    connect(ui->dockReplace, &QDockWidget::topLevelChanged, this, &FPwin::resizeDock);
+    connect(ui->actionReplace, &QAction::triggered, this, &TexxyWindow::replaceDock);
+    connect(ui->toolButtonNext, &QAbstractButton::clicked, this, &TexxyWindow::replace);
+    connect(ui->toolButtonPrv, &QAbstractButton::clicked, this, &TexxyWindow::replace);
+    connect(ui->toolButtonAll, &QAbstractButton::clicked, this, &TexxyWindow::replaceAll);
+    connect(ui->dockReplace, &QDockWidget::visibilityChanged, this, &TexxyWindow::dockVisibilityChanged);
+    connect(ui->dockReplace, &QDockWidget::topLevelChanged, this, &TexxyWindow::resizeDock);
 
-    connect(ui->actionDoc, &QAction::triggered, this, &FPwin::docProp);
-    connect(ui->actionPrint, &QAction::triggered, this, &FPwin::filePrint);
+    connect(ui->actionDoc, &QAction::triggered, this, &TexxyWindow::docProp);
+    connect(ui->actionPrint, &QAction::triggered, this, &TexxyWindow::filePrint);
 
-    connect(ui->actionAbout, &QAction::triggered, this, &FPwin::aboutDialog);
-    connect(ui->actionHelp, &QAction::triggered, this, &FPwin::helpDoc);
+    connect(ui->actionAbout, &QAction::triggered, this, &TexxyWindow::aboutDialog);
+    connect(ui->actionHelp, &QAction::triggered, this, &TexxyWindow::helpDoc);
 
-    connect(this, &FPwin::finishedLoading, [this] {
+    connect(this, &TexxyWindow::finishedLoading, [this] {
         if (sidePane_)
             sidePane_->listWidget()->scrollToCurrentItem();
     });
@@ -277,23 +276,23 @@ FPwin::FPwin(QWidget* parent) : QMainWindow(parent), dummyWidget(nullptr), ui(ne
     QShortcut* zoominPlus = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Plus), this);
     QShortcut* zoomout = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Minus), this);
     QShortcut* zoomzero = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_0), this);
-    connect(zoomin, &QShortcut::activated, this, &FPwin::zoomIn);
-    connect(zoominPlus, &QShortcut::activated, this, &FPwin::zoomIn);
-    connect(zoomout, &QShortcut::activated, this, &FPwin::zoomOut);
-    connect(zoomzero, &QShortcut::activated, this, &FPwin::zoomZero);
+    connect(zoomin, &QShortcut::activated, this, &TexxyWindow::zoomIn);
+    connect(zoominPlus, &QShortcut::activated, this, &TexxyWindow::zoomIn);
+    connect(zoomout, &QShortcut::activated, this, &TexxyWindow::zoomOut);
+    connect(zoomzero, &QShortcut::activated, this, &TexxyWindow::zoomZero);
 
     QShortcut* fullscreen = new QShortcut(QKeySequence(Qt::Key_F11), this);
     connect(fullscreen, &QShortcut::activated, [this] { setWindowState(windowState() ^ Qt::WindowFullScreen); });
 
     QShortcut* focusView = new QShortcut(QKeySequence(Qt::Key_Escape), this);
-    connect(focusView, &QShortcut::activated, this, &FPwin::focusView);
+    connect(focusView, &QShortcut::activated, this, &TexxyWindow::focusView);
 
     QShortcut* focusSidePane = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Escape), this);
-    connect(focusSidePane, &QShortcut::activated, this, &FPwin::focusSidePane);
+    connect(focusSidePane, &QShortcut::activated, this, &TexxyWindow::focusSidePane);
 
     /* exiting a process */
     QShortcut* kill = new QShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_E), this);
-    connect(kill, &QShortcut::activated, this, &FPwin::exitProcess);
+    connect(kill, &QShortcut::activated, this, &TexxyWindow::exitProcess);
 
     dummyWidget = new QWidget();
     setAcceptDrops(true);
@@ -301,7 +300,7 @@ FPwin::FPwin(QWidget* parent) : QMainWindow(parent), dummyWidget(nullptr), ui(ne
     setAttribute(Qt::WA_DeleteOnClose, false);  // we delete windows in singleton
 }
 /*************************/
-FPwin::~FPwin() {
+TexxyWindow::~TexxyWindow() {
     startAutoSaving(false);
     delete dummyWidget;
     dummyWidget = nullptr;
@@ -311,8 +310,8 @@ FPwin::~FPwin() {
     ui = nullptr;
 }
 /*************************/
-void FPwin::closeEvent(QCloseEvent* event) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+void TexxyWindow::closeEvent(QCloseEvent* event) {
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     /* NOTE: With Qt6, "QCoreApplication::quit()" calls "closeEvent()" when the window is
              visible. But we want the app to quit without any prompt when receiving SIGTERM
              and similar signals. Here, we handle the situation by checking if a quit signal
@@ -333,7 +332,7 @@ void FPwin::closeEvent(QCloseEvent* event) {
         if (!isMaximized() && !isFullScreen()) {
             if (config.getRemSize())
                 config.setWinSize(size());
-            if (config.getRemPos() && !static_cast<FPsingleton*>(qApp)->isWayland())
+            if (config.getRemPos() && !static_cast<TexxyApplication*>(qApp)->isWayland())
                 config.setWinPos(geometry().topLeft());
         }
         if (sidePane_ && config.getRemSplitterPos())
@@ -347,10 +346,10 @@ void FPwin::closeEvent(QCloseEvent* event) {
 // This method should be called only when the app quits without closing its windows
 // (e.g., with SIGTERM). It saves the important info that can be queried only at the
 // session end and, for now, covers cursor positions of sessions and last files.
-void FPwin::cleanUpOnTerminating(Config& config, bool isLastWin) {
+void TexxyWindow::cleanUpOnTerminating(Config& config, bool isLastWin) {
     /* WARNING: Qt5 has a bug that will cause a crash if "QDockWidget::visibilityChanged"
                 isn't disconnected here. This is also good with Qt6. */
-    disconnect(ui->dockReplace, &QDockWidget::visibilityChanged, this, &FPwin::dockVisibilityChanged);
+    disconnect(ui->dockReplace, &QDockWidget::visibilityChanged, this, &TexxyWindow::dockVisibilityChanged);
 
     lastWinFilesCur_.clear();
     for (int i = 0; i < ui->tabWidget->count(); ++i) {
@@ -370,8 +369,8 @@ void FPwin::cleanUpOnTerminating(Config& config, bool isLastWin) {
     config.setLastFileCursorPos(lastWinFilesCur_);
 }
 /*************************/
-void FPwin::toggleSidePane() {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+void TexxyWindow::toggleSidePane() {
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (sidePane_ == nullptr) {
         sidePane_ = new SidePane();
         ui->splitter->insertWidget(0, sidePane_);
@@ -398,9 +397,9 @@ void FPwin::toggleSidePane() {
             sizes << s << size().width() - s;
         }
         ui->splitter->setSizes(sizes);
-        connect(sidePane_->listWidget(), &QWidget::customContextMenuRequested, this, &FPwin::listContextMenu);
-        connect(sidePane_->listWidget(), &ListWidget::currentItemUpdated, this, &FPwin::changeTab);
-        connect(sidePane_->listWidget(), &ListWidget::closeSidePane, this, &FPwin::toggleSidePane);
+        connect(sidePane_->listWidget(), &QWidget::customContextMenuRequested, this, &TexxyWindow::listContextMenu);
+        connect(sidePane_->listWidget(), &ListWidget::currentItemUpdated, this, &TexxyWindow::changeTab);
+        connect(sidePane_->listWidget(), &ListWidget::closeSidePane, this, &TexxyWindow::toggleSidePane);
         connect(sidePane_->listWidget(), &ListWidget::closeItem, [this](QListWidgetItem* item) {
             if (!sideItems_.isEmpty())
                 closeTabAtIndex(ui->tabWidget->indexOf(sideItems_.value(item)));
@@ -454,8 +453,8 @@ void FPwin::toggleSidePane() {
         QString txt = ui->actionFirstTab->text();
         ui->actionFirstTab->setText(ui->actionLastTab->text());
         ui->actionLastTab->setText(txt);
-        connect(ui->actionFirstTab, &QAction::triggered, this, &FPwin::lastTab);
-        connect(ui->actionLastTab, &QAction::triggered, this, &FPwin::firstTab);
+        connect(ui->actionFirstTab, &QAction::triggered, this, &TexxyWindow::lastTab);
+        connect(ui->actionLastTab, &QAction::triggered, this, &TexxyWindow::firstTab);
     }
     else {
         QList<int> sizes = ui->splitter->sizes();
@@ -477,12 +476,12 @@ void FPwin::toggleSidePane() {
         QString txt = ui->actionFirstTab->text();
         ui->actionFirstTab->setText(ui->actionLastTab->text());
         ui->actionLastTab->setText(txt);
-        connect(ui->actionLastTab, &QAction::triggered, this, &FPwin::lastTab);
-        connect(ui->actionFirstTab, &QAction::triggered, this, &FPwin::firstTab);
+        connect(ui->actionLastTab, &QAction::triggered, this, &TexxyWindow::lastTab);
+        connect(ui->actionFirstTab, &QAction::triggered, this, &TexxyWindow::firstTab);
     }
 }
 /*************************/
-void FPwin::menubarTitle(bool add, bool setTitle) {
+void TexxyWindow::menubarTitle(bool add, bool setTitle) {
     QWidget* cw = ui->menuBar->cornerWidget();
 
     if (!add)  // removing the corner widget
@@ -506,7 +505,7 @@ void FPwin::menubarTitle(bool add, bool setTitle) {
         mbTitle->setHeightOverride(g.height());
     }
     mbTitle->show();  // needed if the menubar is already visible, i.e., not at the startup
-    connect(mbTitle, &QWidget::customContextMenuRequested, this, &FPwin::tabContextMenu);
+    connect(mbTitle, &QWidget::customContextMenuRequested, this, &TexxyWindow::tabContextMenu);
     connect(mbTitle, &MenuBarTitle::doubleClicked, this, [this] {
         if (windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))
             showNormal();
@@ -518,14 +517,14 @@ void FPwin::menubarTitle(bool add, bool setTitle) {
         mbTitle->setTitle(windowTitle());
 }
 /*************************/
-void FPwin::applyConfigOnStarting() {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+void TexxyWindow::applyConfigOnStarting() {
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
 
     // geometry and window state
     if (config.getRemSize()) {
         resize(config.getWinSize());
         // on Wayland or when position isn't remembered, apply state now, otherwise showEvent handles it
-        if (!config.getRemPos() || static_cast<FPsingleton*>(qApp)->isWayland()) {
+        if (!config.getRemPos() || static_cast<TexxyApplication*>(qApp)->isWayland()) {
             Qt::WindowStates st = {};
             if (config.getIsMaxed())
                 st |= Qt::WindowMaximized;
@@ -578,8 +577,8 @@ void FPwin::applyConfigOnStarting() {
         // hideSingle should not be active when side pane mode is on
         ui->tabWidget->tabBar()->hideSingle(config.getHideSingleTab());
         // connect with UniqueConnection to avoid duplicates on repeated calls
-        QObject::connect(ui->actionLastTab, &QAction::triggered, this, &FPwin::lastTab, Qt::UniqueConnection);
-        QObject::connect(ui->actionFirstTab, &QAction::triggered, this, &FPwin::firstTab, Qt::UniqueConnection);
+        QObject::connect(ui->actionLastTab, &QAction::triggered, this, &TexxyWindow::lastTab, Qt::UniqueConnection);
+        QObject::connect(ui->actionFirstTab, &QAction::triggered, this, &TexxyWindow::firstTab, Qt::UniqueConnection);
     }
     else {
         toggleSidePane();
@@ -596,14 +595,14 @@ void FPwin::applyConfigOnStarting() {
         for (int i = 0; i < recentNumber; ++i) {
             auto* recentAction = new QAction(this);
             recentAction->setVisible(false);
-            QObject::connect(recentAction, &QAction::triggered, this, &FPwin::newTabFromRecent, Qt::UniqueConnection);
+            QObject::connect(recentAction, &QAction::triggered, this, &TexxyWindow::newTabFromRecent, Qt::UniqueConnection);
             ui->menuOpenRecently->addAction(recentAction);
         }
         ui->menuOpenRecently->addSeparator();
         ui->menuOpenRecently->addAction(ui->actionClearRecent);
-        QObject::connect(ui->menuOpenRecently, &QMenu::aboutToShow, this, &FPwin::updateRecenMenu,
+        QObject::connect(ui->menuOpenRecently, &QMenu::aboutToShow, this, &TexxyWindow::updateRecenMenu,
                          Qt::UniqueConnection);
-        QObject::connect(ui->actionClearRecent, &QAction::triggered, this, &FPwin::clearRecentMenu,
+        QObject::connect(ui->actionClearRecent, &QAction::triggered, this, &TexxyWindow::clearRecentMenu,
                          Qt::UniqueConnection);
     }
 
@@ -794,7 +793,7 @@ void FPwin::applyConfigOnStarting() {
 }
 
 /*************************/
-void FPwin::addCursorPosLabel() {
+void TexxyWindow::addCursorPosLabel() {
     if (ui->statusBar->findChild<QLabel*>("posLabel"))
         return;
     QLabel* posLabel = new QLabel();
@@ -805,7 +804,7 @@ void FPwin::addCursorPosLabel() {
     ui->statusBar->addPermanentWidget(posLabel);
 }
 /*************************/
-void FPwin::addRemoveLangBtn(bool add) {
+void TexxyWindow::addRemoveLangBtn(bool add) {
     static QStringList langList;
     if (langList.isEmpty()) {  // no "url" for the language button
         langList << "c" << "cmake" << "config" << "cpp" << "css"
@@ -917,7 +916,7 @@ void FPwin::addRemoveLangBtn(bool add) {
         langButton->setMenu(menu);
 
         ui->statusBar->insertPermanentWidget(2, langButton);
-        connect(aGroup, &QActionGroup::triggered, this, &FPwin::enforceLang);
+        connect(aGroup, &QActionGroup::triggered, this, &TexxyWindow::enforceLang);
 
         /* update the language button if this is called from outside c-tor
            (otherwise, tabswitch() will do it) */
@@ -931,12 +930,12 @@ void FPwin::addRemoveLangBtn(bool add) {
 // opened in another window, the second dialog will be seen as a child of the first window.
 // This could cause a crash if the dialog is closed after closing the first window.
 // As a workaround, we keep window-modality but don't let the user open two window-modal dialogs.
-bool FPwin::hasAnotherDialog() {
+bool TexxyWindow::hasAnotherDialog() {
     closeWarningBar();
     bool res = false;
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     for (int i = 0; i < singleton->Wins.count(); ++i) {
-        FPwin* win = singleton->Wins.at(i);
+        TexxyWindow* win = singleton->Wins.at(i);
         if (win != this) {
             QList<QDialog*> dialogs = win->findChildren<QDialog*>();
             for (int j = 0; j < dialogs.count(); ++j) {
@@ -958,15 +957,15 @@ bool FPwin::hasAnotherDialog() {
     return res;
 }
 /*************************/
-void FPwin::updateGUIForSingleTab(bool single) {
-    ui->actionDetachTab->setEnabled(!single && !static_cast<FPsingleton*>(qApp)->isStandAlone());
+void TexxyWindow::updateGUIForSingleTab(bool single) {
+    ui->actionDetachTab->setEnabled(!single && !static_cast<TexxyApplication*>(qApp)->isStandAlone());
     ui->actionRightTab->setEnabled(!single);
     ui->actionLeftTab->setEnabled(!single);
     ui->actionLastTab->setEnabled(!single);
     ui->actionFirstTab->setEnabled(!single);
 }
 /*************************/
-void FPwin::deleteTabPage(int tabIndex, bool saveToList, bool closeWithLastTab) {
+void TexxyWindow::deleteTabPage(int tabIndex, bool saveToList, bool closeWithLastTab) {
     TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->widget(tabIndex));
     if (tabPage == nullptr)
         return;
@@ -978,7 +977,7 @@ void FPwin::deleteTabPage(int tabIndex, bool saveToList, bool closeWithLastTab) 
     }
     TextEdit* textEdit = tabPage->textEdit();
     QString fileName = textEdit->getFileName();
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (!fileName.isEmpty()) {
         if (textEdit->getSaveCursor())
             config.saveCursorPos(fileName, textEdit->textCursor().position());
@@ -987,8 +986,8 @@ void FPwin::deleteTabPage(int tabIndex, bool saveToList, bool closeWithLastTab) 
     }
     /* because deleting the syntax highlighter changes the text,
        it is better to disconnect contentsChange() here to prevent a crash */
-    disconnect(textEdit, &QPlainTextEdit::textChanged, this, &FPwin::hlight);
-    disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::updateWordInfo);
+    disconnect(textEdit, &QPlainTextEdit::textChanged, this, &TexxyWindow::hlight);
+    disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::updateWordInfo);
     if (config.getSelectionHighlighting())
         disconnect(textEdit->document(), &QTextDocument::contentsChange, textEdit, &TextEdit::onContentsChange);
     syntaxHighlighting(textEdit, false);
@@ -1005,7 +1004,7 @@ void FPwin::deleteTabPage(int tabIndex, bool saveToList, bool closeWithLastTab) 
 // If both "first" and "last" are negative, all tabs will be closed
 // The case, when they're both greater than -1, is covered but not used anywhere
 // Tabs/rows are always closed from right/bottom to left/top
-bool FPwin::closePages(int first, int last, bool saveFilesList) {
+bool TexxyWindow::closePages(int first, int last, bool saveFilesList) {
     if (!isReady()) {
         closePreviousPages_ = false;
         return true;
@@ -1013,14 +1012,14 @@ bool FPwin::closePages(int first, int last, bool saveFilesList) {
 
     // RAII guards for autosave pause and making sure we unbusy on all paths
     struct AutoPause {
-        FPwin* self;
-        explicit AutoPause(FPwin* s) : self(s) { self->pauseAutoSaving(true); }
+        TexxyWindow* self;
+        explicit AutoPause(TexxyWindow* s) : self(s) { self->pauseAutoSaving(true); }
         ~AutoPause() { self->pauseAutoSaving(false); }
     } autoPause(this);
 
     struct FinallyUnbusy {
-        FPwin* self;
-        explicit FinallyUnbusy(FPwin* s) : self(s) {}
+        TexxyWindow* self;
+        explicit FinallyUnbusy(TexxyWindow* s) : self(s) {}
         ~FinallyUnbusy() { self->unbusy(); }
     } finallyUnbusy(this);
 
@@ -1163,7 +1162,7 @@ bool FPwin::closePages(int first, int last, bool saveFilesList) {
     return keep;
 }
 /*************************/
-void FPwin::copyTabFileName() {
+void TexxyWindow::copyTabFileName() {
     if (rightClicked_ < 0)
         return;
     TabPage* tabPage = nullptr;
@@ -1177,7 +1176,7 @@ void FPwin::copyTabFileName() {
     }
 }
 /*************************/
-void FPwin::copyTabFilePath() {
+void TexxyWindow::copyTabFilePath() {
     if (rightClicked_ < 0)
         return;
     TabPage* tabPage = nullptr;
@@ -1192,26 +1191,26 @@ void FPwin::copyTabFilePath() {
     }
 }
 /*************************/
-void FPwin::closeAllPages() {
+void TexxyWindow::closeAllPages() {
     closePages(-1, -1);
 }
 /*************************/
-void FPwin::closeNextPages() {
+void TexxyWindow::closeNextPages() {
     closePages(rightClicked_, -1);
 }
 /*************************/
-void FPwin::closePreviousPages() {
+void TexxyWindow::closePreviousPages() {
     closePages(-1, rightClicked_);
 }
 /*************************/
-void FPwin::closeOtherPages() {
+void TexxyWindow::closeOtherPages() {
     /* NOTE: Because saving as root is possible, we can't close the previous pages
              here. They will be closed by closePages() if needed. */
     closePreviousPages_ = true;
     closePages(rightClicked_, -1);
 }
 /*************************/
-void FPwin::dragEnterEvent(QDragEnterEvent* event) {
+void TexxyWindow::dragEnterEvent(QDragEnterEvent* event) {
     if (locked_ || findChildren<QDialog*>().count() > 0)
         return;
     if (event->mimeData()->hasUrls())
@@ -1222,7 +1221,7 @@ void FPwin::dragEnterEvent(QDragEnterEvent* event) {
     }
 }
 /*************************/
-void FPwin::dropEvent(QDropEvent* event) {
+void TexxyWindow::dropEvent(QDropEvent* event) {
     if (locked_)
         return;
     if (event->mimeData()->hasFormat("application/texxy-tab")) {
@@ -1263,7 +1262,7 @@ void FPwin::dropEvent(QDropEvent* event) {
 // The other variables are only for saveAsRoot(): "first and "last" determine
 // the range of indexes/rows that should be closed and "curItem"/"curPage" is
 // the item/tab that should be made current in side-pane/tab-bar again.
-FPwin::DOCSTATE FPwin::savePrompt(int tabIndex,
+TexxyWindow::DOCSTATE TexxyWindow::savePrompt(int tabIndex,
                                   bool noToAll,
                                   int first,
                                   int last,
@@ -1345,7 +1344,7 @@ FPwin::DOCSTATE FPwin::savePrompt(int tabIndex,
 }
 /*************************/
 // Enable or disable some widgets.
-void FPwin::enableWidgets(bool enable) const {
+void TexxyWindow::enableWidgets(bool enable) const {
     if (!enable && ui->dockReplace->isVisible())
         ui->dockReplace->setVisible(false);
     if (!enable && ui->spinBox->isVisible()) {
@@ -1354,7 +1353,7 @@ void FPwin::enableWidgets(bool enable) const {
         ui->checkBox->setVisible(false);
     }
     if ((!enable && ui->statusBar->isVisible()) ||
-        (enable && static_cast<FPsingleton*>(qApp)->getConfig().getShowStatusbar()))  // starting from no tab
+        (enable && static_cast<TexxyApplication*>(qApp)->getConfig().getShowStatusbar()))  // starting from no tab
     {
         ui->statusBar->setVisible(enable);
     }
@@ -1392,7 +1391,7 @@ void FPwin::enableWidgets(bool enable) const {
     }
 }
 /*************************/
-void FPwin::updateCustomizableShortcuts(bool disable) {
+void TexxyWindow::updateCustomizableShortcuts(bool disable) {
     QHash<QAction*, QKeySequence>::const_iterator iter = defaultShortcuts_.constBegin();
     if (disable) {  // remove shortcuts
         while (iter != defaultShortcuts_.constEnd()) {
@@ -1401,7 +1400,7 @@ void FPwin::updateCustomizableShortcuts(bool disable) {
         }
     }
     else {  // restore shortcuts
-        QHash<QString, QString> ca = static_cast<FPsingleton*>(qApp)->getConfig().customShortcutActions();
+        QHash<QString, QString> ca = static_cast<TexxyApplication*>(qApp)->getConfig().customShortcutActions();
         QList<QString> cn = ca.keys();
 
         while (iter != defaultShortcuts_.constEnd()) {
@@ -1419,7 +1418,7 @@ void FPwin::updateCustomizableShortcuts(bool disable) {
 // The searchbar shortcuts of the current tab page are handled separately.
 //
 // This function also updates shortcuts after they're customized in the Preferences dialog.
-void FPwin::updateShortcuts(bool disable, bool page) {
+void TexxyWindow::updateShortcuts(bool disable, bool page) {
     if (disable) {
         ui->actionCut->setShortcut(QKeySequence());
         ui->actionCopy->setShortcut(QKeySequence());
@@ -1449,12 +1448,12 @@ void FPwin::updateShortcuts(bool disable, bool page) {
     }
 }
 /*************************/
-void FPwin::newTab() {
+void TexxyWindow::newTab() {
     createEmptyTab(!isLoading());
 }
 /*************************/
-TabPage* FPwin::createEmptyTab(bool setCurrent, bool allowNormalHighlighter) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+TabPage* TexxyWindow::createEmptyTab(bool setCurrent, bool allowNormalHighlighter) {
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config config = singleton->getConfig();
 
     static const QList<QKeySequence> searchShortcuts = {QKeySequence(Qt::Key_F3), QKeySequence(Qt::Key_F4),
@@ -1465,7 +1464,7 @@ TabPage* FPwin::createEmptyTab(bool setCurrent, bool allowNormalHighlighter) {
                     searchShortcuts, nullptr);
     tabPage->setSearchModel(singleton->searchModel());
     TextEdit* textEdit = tabPage->textEdit();
-    connect(textEdit, &QWidget::customContextMenuRequested, this, &FPwin::editorContextMenu);
+    connect(textEdit, &QWidget::customContextMenuRequested, this, &TexxyWindow::editorContextMenu);
     textEdit->setSelectionHighlighting(config.getSelectionHighlighting());
     textEdit->setPastePaths(config.getPastePaths());
     textEdit->setAutoReplace(config.getAutoReplace());
@@ -1508,23 +1507,23 @@ TabPage* FPwin::createEmptyTab(bool setCurrent, bool allowNormalHighlighter) {
     if (ui->actionLineNumbers->isChecked() || ui->spinBox->isVisible())
         textEdit->showLineNumbers(true);
     if (ui->spinBox->isVisible())
-        connect(textEdit->document(), &QTextDocument::blockCountChanged, this, &FPwin::setMax);
+        connect(textEdit->document(), &QTextDocument::blockCountChanged, this, &TexxyWindow::setMax);
     if (ui->statusBar->isVisible() ||
         config.getShowStatusbar())  // when the main window is being created, isVisible() isn't set yet
     {
         /* If this becomes the current tab, "tabSwitch()" will take care of the status label,
            the word button and the cursor position label. */
 
-        connect(textEdit, &QPlainTextEdit::blockCountChanged, this, &FPwin::statusMsgWithLineCount);
-        connect(textEdit, &TextEdit::selChanged, this, &FPwin::statusMsg);
+        connect(textEdit, &QPlainTextEdit::blockCountChanged, this, &TexxyWindow::statusMsgWithLineCount);
+        connect(textEdit, &TextEdit::selChanged, this, &TexxyWindow::statusMsg);
         if (config.getShowCursorPos())
-            connect(textEdit, &QPlainTextEdit::cursorPositionChanged, this, &FPwin::showCursorPos);
+            connect(textEdit, &QPlainTextEdit::cursorPositionChanged, this, &TexxyWindow::showCursorPos);
     }
     connect(textEdit->document(), &QTextDocument::undoAvailable, ui->actionUndo, &QAction::setEnabled);
     connect(textEdit->document(), &QTextDocument::redoAvailable, ui->actionRedo, &QAction::setEnabled);
     if (!config.getSaveUnmodified())
-        connect(textEdit->document(), &QTextDocument::modificationChanged, this, &FPwin::enableSaving);
-    connect(textEdit->document(), &QTextDocument::modificationChanged, this, &FPwin::asterisk);
+        connect(textEdit->document(), &QTextDocument::modificationChanged, this, &TexxyWindow::enableSaving);
+    connect(textEdit->document(), &QTextDocument::modificationChanged, this, &TexxyWindow::asterisk);
     connect(textEdit, &TextEdit::canCopy, ui->actionCut, &QAction::setEnabled);
     connect(textEdit, &TextEdit::canCopy, ui->actionDelete, &QAction::setEnabled);
     connect(textEdit, &TextEdit::canCopy, ui->actionCopy, &QAction::setEnabled);
@@ -1532,12 +1531,12 @@ TabPage* FPwin::createEmptyTab(bool setCurrent, bool allowNormalHighlighter) {
     connect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionLowerCase, &QAction::setEnabled);
     connect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionStartCase, &QAction::setEnabled);
 
-    connect(textEdit, &TextEdit::filePasted, this, &FPwin::newTabFromName);
-    connect(textEdit, &TextEdit::zoomedOut, this, &FPwin::reformat);
-    connect(textEdit, &TextEdit::hugeColumn, this, &FPwin::columnWarning);
+    connect(textEdit, &TextEdit::filePasted, this, &TexxyWindow::newTabFromName);
+    connect(textEdit, &TextEdit::zoomedOut, this, &TexxyWindow::reformat);
+    connect(textEdit, &TextEdit::hugeColumn, this, &TexxyWindow::columnWarning);
 
-    connect(tabPage, &TabPage::find, this, &FPwin::find);
-    connect(tabPage, &TabPage::searchFlagChanged, this, &FPwin::searchFlagChanged);
+    connect(tabPage, &TabPage::find, this, &TexxyWindow::find);
+    connect(tabPage, &TabPage::searchFlagChanged, this, &TexxyWindow::searchFlagChanged);
 
     /* I don't know why, under KDE, when a text is selected for the first time,
        it may not be copied to the selection clipboard. Perhaps it has something
@@ -1567,7 +1566,7 @@ TabPage* FPwin::createEmptyTab(bool setCurrent, bool allowNormalHighlighter) {
     else if (isMinimized())
         setWindowState((windowState() & ~Qt::WindowMinimized) | Qt::WindowActive);
 #ifdef HAS_X11
-    else if (static_cast<FPsingleton*>(qApp)->isX11()) {
+    else if (static_cast<TexxyApplication*>(qApp)->isX11()) {
         if (isWindowShaded(winId()))
             unshadeWindow(winId());
     }
@@ -1576,7 +1575,7 @@ TabPage* FPwin::createEmptyTab(bool setCurrent, bool allowNormalHighlighter) {
     return tabPage;
 }
 /*************************/
-void FPwin::editorContextMenu(const QPoint& p) {
+void TexxyWindow::editorContextMenu(const QPoint& p) {
     /* NOTE: The editor's customized context menu comes here (and not in
              the TextEdit class) for not duplicating actions, although that
              requires extra signal connections and disconnections on tab DND. */
@@ -1703,8 +1702,8 @@ void FPwin::editorContextMenu(const QPoint& p) {
     delete menu;
 }
 /*************************/
-void FPwin::updateRecenMenu() {
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+void TexxyWindow::updateRecenMenu() {
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
     QStringList recentFiles = config.getRecentFiles();
     int recentSize = recentFiles.count();
     int recentNumber = config.getCurRecentFilesNumber();
@@ -1733,50 +1732,50 @@ void FPwin::updateRecenMenu() {
     ui->actionClearRecent->setEnabled(recentSize != 0);
 }
 /*************************/
-void FPwin::clearRecentMenu() {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+void TexxyWindow::clearRecentMenu() {
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.clearRecentFiles();
     updateRecenMenu();
 }
 /*************************/
-void FPwin::addRecentFile(const QString& file) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+void TexxyWindow::addRecentFile(const QString& file) {
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.addRecentFile(file);
 
     /* also, try to make other windows know about this file */
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     if (singleton->isStandAlone())
         singleton->sendRecentFile(file, config.getRecentOpened());
 }
 /*************************/
-void FPwin::reformat(TextEdit* textEdit) {
+void TexxyWindow::reformat(TextEdit* textEdit) {
     formatTextRect();  // in "syntax.cpp"
     if (!textEdit->getSearchedText().isEmpty())
         hlight();  // in "find.cpp"
     textEdit->selectionHlight();
 }
 /*************************/
-void FPwin::zoomIn() {
+void TexxyWindow::zoomIn() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->zooming(1.f);
 }
 /*************************/
-void FPwin::zoomOut() {
+void TexxyWindow::zoomOut() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         TextEdit* textEdit = tabPage->textEdit();
         textEdit->zooming(-1.f);
     }
 }
 /*************************/
-void FPwin::zoomZero() {
+void TexxyWindow::zoomZero() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         TextEdit* textEdit = tabPage->textEdit();
         textEdit->zooming(0.f);
     }
 }
 /*************************/
-void FPwin::defaultSize() {
-    QSize s = static_cast<FPsingleton*>(qApp)->getConfig().getStartSize();
+void TexxyWindow::defaultSize() {
+    QSize s = static_cast<TexxyApplication*>(qApp)->getConfig().getStartSize();
     if (size() == s)
         return;
     if (isMaximized() || isFullScreen())
@@ -1793,10 +1792,10 @@ void FPwin::defaultSize() {
     resize(s);
     /*if (parent() != nullptr)
         setParent (nullptr, flags);*/
-    // QTimer::singleShot (0, this, &FPwin::show);
+    // QTimer::singleShot (0, this, &TexxyWindow::show);
 }
 /*************************/
-/*void FPwin::align()
+/*void TexxyWindow::align()
 {
     int index = ui->tabWidget->currentIndex();
     if (index == -1) return;
@@ -1817,18 +1816,18 @@ void FPwin::defaultSize() {
     }
 }*/
 /*************************/
-void FPwin::focusView() {
+void TexxyWindow::focusView() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->setFocus();
 }
 /*************************/
-void FPwin::focusSidePane() {
+void TexxyWindow::focusSidePane() {
     if (sidePane_) {
         QList<int> sizes = ui->splitter->sizes();
         if (sizes.size() == 2 && sizes.at(0) == 0)  // with RTL too
         {                                           // first, ensure its visibility (see toggleSidePane())
             sizes.clear();
-            Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+            Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
             if (config.getRemSplitterPos()) {
                 sizes.append(std::min(std::max(16, config.getSplitterPos()), size().width() / 2));
                 sizes.append(100);
@@ -1843,7 +1842,7 @@ void FPwin::focusSidePane() {
     }
 }
 /*************************/
-void FPwin::executeProcess() {
+void TexxyWindow::executeProcess() {
     QList<QDialog*> dialogs = findChildren<QDialog*>();
     for (int i = 0; i < dialogs.count(); ++i) {
         if (dialogs.at(i)->isModal())
@@ -1851,7 +1850,7 @@ void FPwin::executeProcess() {
     }
     closeWarningBar();
 
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (!config.getExecuteScripts())
         return;
 
@@ -1871,8 +1870,8 @@ void FPwin::executeProcess() {
 
         QProcess* process = new QProcess(tabPage);
         process->setObjectName(fName);  // to put it into the message dialog
-        connect(process, &QProcess::readyReadStandardOutput, this, &FPwin::displayOutput);
-        connect(process, &QProcess::readyReadStandardError, this, &FPwin::displayError);
+        connect(process, &QProcess::readyReadStandardOutput, this, &TexxyWindow::displayOutput);
+        connect(process, &QProcess::readyReadStandardError, this, &TexxyWindow::displayError);
         QString command = config.getExecuteCommand();
         if (!command.isEmpty()) {
             QStringList commandParts = QProcess::splitCommand(command);
@@ -1892,18 +1891,18 @@ void FPwin::executeProcess() {
     }
 }
 /*************************/
-bool FPwin::isScriptLang(const QString& lang) const {
+bool TexxyWindow::isScriptLang(const QString& lang) const {
     return (lang == "sh" || lang == "python" || lang == "ruby" || lang == "lua" || lang == "perl");
 }
 /*************************/
-void FPwin::exitProcess() {
+void TexxyWindow::exitProcess() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         if (QProcess* process = tabPage->findChild<QProcess*>(QString(), Qt::FindDirectChildrenOnly))
             process->kill();
     }
 }
 /*************************/
-void FPwin::displayMessage(bool error) {
+void TexxyWindow::displayMessage(bool error) {
     QProcess* process = static_cast<QProcess*>(QObject::sender());
     if (!process)
         return;  // impossible
@@ -1969,17 +1968,17 @@ void FPwin::displayMessage(bool error) {
     }
 }
 /*************************/
-void FPwin::displayOutput() {
+void TexxyWindow::displayOutput() {
     displayMessage(false);
 }
 /*************************/
-void FPwin::displayError() {
+void TexxyWindow::displayError() {
     displayMessage(true);
 }
 /*************************/
 // This closes either the current page or the right-clicked side-pane item but
 // never the right-clicked tab because the tab context menu has no closing item.
-void FPwin::closePage() {
+void TexxyWindow::closePage() {
     if (!isReady())
         return;
 
@@ -2039,7 +2038,7 @@ void FPwin::closePage() {
     pauseAutoSaving(false);
 }
 /*************************/
-void FPwin::closeTabAtIndex(int tabIndex) {
+void TexxyWindow::closeTabAtIndex(int tabIndex) {
     pauseAutoSaving(true);
 
     TabPage* curPage = nullptr;
@@ -2087,7 +2086,7 @@ void FPwin::closeTabAtIndex(int tabIndex) {
     pauseAutoSaving(false);
 }
 /*************************/
-void FPwin::setWinTitle(const QString& title) {
+void TexxyWindow::setWinTitle(const QString& title) {
     setWindowTitle(title);
     if (!ui->menuBar->isHidden()) {
         if (auto mbt = qobject_cast<MenuBarTitle*>(ui->menuBar->cornerWidget()))
@@ -2095,7 +2094,7 @@ void FPwin::setWinTitle(const QString& title) {
     }
 }
 /*************************/
-void FPwin::setTitle(const QString& fileName, int tabIndex) {
+void TexxyWindow::setTitle(const QString& fileName, int tabIndex) {
     int index = tabIndex;
     if (index < 0)
         index = ui->tabWidget->currentIndex();  // is never -1
@@ -2144,12 +2143,12 @@ void FPwin::setTitle(const QString& fileName, int tabIndex) {
         ui->tabWidget->setTabIcon(index, QIcon());
 }
 /*************************/
-void FPwin::enableSaving(bool modified) {
+void TexxyWindow::enableSaving(bool modified) {
     if (!inactiveTabModified_)
         ui->actionSave->setEnabled(modified);
 }
 /*************************/
-void FPwin::asterisk(bool modified) {
+void TexxyWindow::asterisk(bool modified) {
     if (inactiveTabModified_)
         return;
 
@@ -2182,17 +2181,17 @@ void FPwin::asterisk(bool modified) {
     ui->tabWidget->setTabText(index, shownName);
 }
 /*************************/
-void FPwin::makeBusy() {
+void TexxyWindow::makeBusy() {
     if (QGuiApplication::overrideCursor() == nullptr)
         QGuiApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
 }
 /*************************/
-void FPwin::unbusy() {
+void TexxyWindow::unbusy() {
     if (QGuiApplication::overrideCursor() != nullptr)
         QGuiApplication::restoreOverrideCursor();
 }
 /*************************/
-void FPwin::loadText(const QString& fileName,
+void TexxyWindow::loadText(const QString& fileName,
                      bool enforceEncod,
                      bool reload,
                      int restoreCursor,
@@ -2204,8 +2203,8 @@ void FPwin::loadText(const QString& fileName,
     if (enforceEncod)
         charset = checkToEncoding();
     Loading* thread = new Loading(fileName, charset, reload, restoreCursor, posInLine, enforceUneditable, multiple);
-    thread->setSkipNonText(static_cast<FPsingleton*>(qApp)->getConfig().getSkipNonText());
-    connect(thread, &Loading::completed, this, &FPwin::addText);
+    thread->setSkipNonText(static_cast<TexxyApplication*>(qApp)->getConfig().getSkipNonText());
+    connect(thread, &Loading::completed, this, &TexxyWindow::addText);
     connect(thread, &Loading::finished, thread, &QObject::deleteLater);
     thread->start();
 
@@ -2215,7 +2214,7 @@ void FPwin::loadText(const QString& fileName,
 }
 /*************************/
 // When multiple files are being loaded, we don't change the current tab.
-void FPwin::addText(const QString& text,
+void TexxyWindow::addText(const QString& text,
                     const QString& fileName,
                     const QString& charset,
                     bool enforceEncod,
@@ -2227,11 +2226,11 @@ void FPwin::addText(const QString& text,
     // early error and special-case routing
     if (fileName.isEmpty() || charset.isEmpty()) {
         if (!fileName.isEmpty() && charset.isEmpty())  // very large file
-            connect(this, &FPwin::finishedLoading, this, &FPwin::onOpeningHugeFiles, Qt::UniqueConnection);
+            connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningHugeFiles, Qt::UniqueConnection);
         else if (fileName.isEmpty() && !charset.isEmpty())  // non-text file that shouldn't be opened
-            connect(this, &FPwin::finishedLoading, this, &FPwin::onOpeninNonTextFiles, Qt::UniqueConnection);
+            connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeninNonTextFiles, Qt::UniqueConnection);
         else
-            connect(this, &FPwin::finishedLoading, this, &FPwin::onPermissionDenied, Qt::UniqueConnection);
+            connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onPermissionDenied, Qt::UniqueConnection);
 
         --loadingProcesses_;  // can never become negative
         if (!isLoading()) {
@@ -2239,7 +2238,7 @@ void FPwin::addText(const QString& text,
             updateShortcuts(false, false);
             closeWarningBar();
             emit finishedLoading();
-            QTimer::singleShot(0, this, &FPwin::unbusy);
+            QTimer::singleShot(0, this, &TexxyWindow::unbusy);
             stealFocus();
         }
         return;
@@ -2292,7 +2291,7 @@ void FPwin::addText(const QString& text,
     }
 
     const QFileInfo fInfo(fileName);
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
 
     // set the text
     inactiveTabModified_ = true;   // ignore modificationChanged during initial set
@@ -2353,7 +2352,7 @@ void FPwin::addText(const QString& text,
     if (uneditable) {
         textEdit->makeUneditable(true);
         if (!reload)  // on reload this will be connected later
-            connect(this, &FPwin::finishedLoading, this, &FPwin::onOpeningUneditable, Qt::UniqueConnection);
+            connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningUneditable, Qt::UniqueConnection);
     }
 
     setProgLang(textEdit);
@@ -2442,13 +2441,13 @@ void FPwin::addText(const QString& text,
         disconnect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionStartCase, &QAction::setEnabled);
     }
     else if (textEdit->isReadOnly()) {
-        QTimer::singleShot(0, this, &FPwin::makeEditable);
+        QTimer::singleShot(0, this, &TexxyWindow::makeEditable);
     }
 
     // UI updates for the active tab when not opening multiple files at once
     if (!multiple || openInCurrentTab) {
         if (!fInfo.exists())
-            connect(this, &FPwin::finishedLoading, this, &FPwin::onOpeningNonexistent, Qt::UniqueConnection);
+            connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningNonexistent, Qt::UniqueConnection);
 
         if (ui->statusBar->isVisible()) {
             statusMsgWithLineCount(textEdit->document()->blockCount());
@@ -2481,12 +2480,12 @@ void FPwin::addText(const QString& text,
 
         if (reload) {
             // restore cursor and scroll position after reload
-            lambdaConnection_ = QObject::connect(this, &FPwin::finishedLoading, textEdit, [this, textEdit, vPos] {
+            lambdaConnection_ = QObject::connect(this, &TexxyWindow::finishedLoading, textEdit, [this, textEdit, vPos] {
                 QTimer::singleShot(0, textEdit, [textEdit, vPos] { textEdit->setViewPostion(vPos); });
                 disconnectLambda();
             });
             if (uneditable)
-                connect(this, &FPwin::finishedLoading, this, &FPwin::onOpeningUneditable, Qt::UniqueConnection);
+                connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningUneditable, Qt::UniqueConnection);
         }
         else if (firstItem) {
             // select the first item when sidePane exists
@@ -2499,25 +2498,25 @@ void FPwin::addText(const QString& text,
 
         closeWarningBar(true);  // allow closing animation to finish
         emit finishedLoading();
-        QTimer::singleShot(0, this, &FPwin::unbusy);  // remove busy cursor after pending events like highlighting
+        QTimer::singleShot(0, this, &TexxyWindow::unbusy);  // remove busy cursor after pending events like highlighting
         stealFocus();
     }
 }
 /*************************/
-void FPwin::disconnectLambda() {
+void TexxyWindow::disconnectLambda() {
     QObject::disconnect(lambdaConnection_);
 }
 /*************************/
-void FPwin::onOpeningHugeFiles() {
-    disconnect(this, &FPwin::finishedLoading, this, &FPwin::onOpeningHugeFiles);
+void TexxyWindow::onOpeningHugeFiles() {
+    disconnect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningHugeFiles);
     QTimer::singleShot(0, this, [=]() {
         showWarningBar("<center><b><big>" + tr("Huge file(s) not opened!") + "</big></b></center>\n" + "<center>" +
                        tr("Texxy does not open files larger than 100 MiB.") + "</center>");
     });
 }
 /*************************/
-void FPwin::onOpeninNonTextFiles() {
-    disconnect(this, &FPwin::finishedLoading, this, &FPwin::onOpeninNonTextFiles);
+void TexxyWindow::onOpeninNonTextFiles() {
+    disconnect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeninNonTextFiles);
     QTimer::singleShot(0, this, [=]() {
         showWarningBar("<center><b><big>" + tr("Non-text file(s) not opened!") + "</big></b></center>\n" +
                            "<center><i>" + tr("See Preferences → Files → Do not permit opening of non-text files") +
@@ -2526,16 +2525,16 @@ void FPwin::onOpeninNonTextFiles() {
     });
 }
 /*************************/
-void FPwin::onPermissionDenied() {
-    disconnect(this, &FPwin::finishedLoading, this, &FPwin::onPermissionDenied);
+void TexxyWindow::onPermissionDenied() {
+    disconnect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onPermissionDenied);
     QTimer::singleShot(0, this, [=]() {
         showWarningBar("<center><b><big>" + tr("Some file(s) could not be opened!") + "</big></b></center>\n" +
                        "<center>" + tr("You may not have the permission to read.") + "</center>");
     });
 }
 /*************************/
-void FPwin::onOpeningUneditable() {
-    disconnect(this, &FPwin::finishedLoading, this, &FPwin::onOpeningUneditable);
+void TexxyWindow::onOpeningUneditable() {
+    disconnect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningUneditable);
     /* A timer is needed here because the scrollbar position is restored on reloading by a
        lambda connection. Timers are also used in similar places for the sake of certainty. */
     QTimer::singleShot(0, this, [=]() {
@@ -2544,8 +2543,8 @@ void FPwin::onOpeningUneditable() {
     });
 }
 /*************************/
-void FPwin::onOpeningNonexistent() {
-    disconnect(this, &FPwin::finishedLoading, this, &FPwin::onOpeningNonexistent);
+void TexxyWindow::onOpeningNonexistent() {
+    disconnect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningNonexistent);
     QTimer::singleShot(0, this, [=]() {
         /* show the bar only if the current file doesn't exist at this very moment */
         if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
@@ -2556,12 +2555,12 @@ void FPwin::onOpeningNonexistent() {
     });
 }
 /*************************/
-void FPwin::columnWarning() {
+void TexxyWindow::columnWarning() {
     showWarningBar("<center><b><big>" + tr("Huge column!") + "</big></b></center>\n" + "<center>" +
                    tr("Columns with more than 1000 rows are not supported.") + "</center>");
 }
 /*************************/
-void FPwin::showWarningBar(const QString& message, int timeout, bool startupBar) {
+void TexxyWindow::showWarningBar(const QString& message, int timeout, bool startupBar) {
     /* don't show this warning bar if the window is locked at this moment */
     if (locked_)
         return;
@@ -2600,12 +2599,12 @@ void FPwin::showWarningBar(const QString& message, int timeout, bool startupBar)
         connect(tabPage->textEdit(), &QPlainTextEdit::updateRequest, bar, &WarningBar::closeBarOnScrolling);
 }
 /*************************/
-void FPwin::showRootWarning() {
+void TexxyWindow::showRootWarning() {
     QTimer::singleShot(
         0, this, [=]() { showWarningBar("<center><b><big>" + tr("Root Instance") + "</big></b></center>", 10, true); });
 }
 /*************************/
-void FPwin::closeWarningBar(bool keepOnStartup) {
+void TexxyWindow::closeWarningBar(bool keepOnStartup) {
     const QList<WarningBar*> warningBars = ui->tabWidget->findChildren<WarningBar*>();
     for (WarningBar* wb : warningBars) {
         if (!keepOnStartup || wb->objectName() != "startupBar")
@@ -2613,19 +2612,19 @@ void FPwin::closeWarningBar(bool keepOnStartup) {
     }
 }
 /*************************/
-void FPwin::newTabFromName(const QString& fileName, int restoreCursor, int posInLine, bool multiple) {
+void TexxyWindow::newTabFromName(const QString& fileName, int restoreCursor, int posInLine, bool multiple) {
     if (!fileName.isEmpty())
         loadText(fileName, false, false, restoreCursor, posInLine, false, multiple);
 }
 /*************************/
-void FPwin::newTabFromRecent() {
+void TexxyWindow::newTabFromRecent() {
     QAction* action = qobject_cast<QAction*>(QObject::sender());
     if (!action)
         return;
     loadText(action->data().toString(), false, false);
 }
 /*************************/
-void FPwin::fileOpen() {
+void TexxyWindow::fileOpen() {
     if (isLoading())
         return;
 
@@ -2668,7 +2667,7 @@ void FPwin::fileOpen() {
         /* if relevant, do filtering to make opening of similar files easier */
         filter = tr("All Files") + QString(" (*);;*.%1").arg(fname.section('.', -1, -1));
     }
-    FileDialog dialog(this, static_cast<FPsingleton*>(qApp)->getConfig().getNativeDialog());
+    FileDialog dialog(this, static_cast<TexxyApplication*>(qApp)->getConfig().getNativeDialog());
     dialog.setAcceptMode(QFileDialog::AcceptOpen);
     dialog.setWindowTitle(tr("Open file..."));
     dialog.setFileMode(QFileDialog::ExistingFiles);
@@ -2692,7 +2691,7 @@ void FPwin::fileOpen() {
 }
 /*************************/
 // Check if the file is already opened for editing somewhere else.
-bool FPwin::alreadyOpen(TabPage* tabPage) const {
+bool TexxyWindow::alreadyOpen(TabPage* tabPage) const {
     bool res = false;
 
     QString fileName = tabPage->textEdit()->getFileName();
@@ -2700,9 +2699,9 @@ bool FPwin::alreadyOpen(TabPage* tabPage) const {
     bool exists = info.exists();
     QString target = info.isSymLink() ? info.symLinkTarget()  // consider symlinks too
                                       : fileName;
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     for (int i = 0; i < singleton->Wins.count(); ++i) {
-        FPwin* thisOne = singleton->Wins.at(i);
+        TexxyWindow* thisOne = singleton->Wins.at(i);
         for (int j = 0; j < thisOne->ui->tabWidget->count(); ++j) {
             TabPage* thisTabPage = qobject_cast<TabPage*>(thisOne->ui->tabWidget->widget(j));
             if (thisOne == this && thisTabPage == tabPage)
@@ -2723,7 +2722,7 @@ bool FPwin::alreadyOpen(TabPage* tabPage) const {
     return res;
 }
 /*************************/
-void FPwin::enforceEncoding(QAction* a) {
+void TexxyWindow::enforceEncoding(QAction* a) {
     /* not needed because encoding has no keyboard shortcut or tool button */
     if (isLoading())
         return;
@@ -2767,7 +2766,7 @@ void FPwin::enforceEncoding(QAction* a) {
     }
 }
 /*************************/
-void FPwin::reload() {
+void TexxyWindow::reload() {
     if (isLoading())
         return;
 
@@ -2789,369 +2788,14 @@ void FPwin::reload() {
     }
 }
 /*************************/
-static inline int trailingSpaces(const QString& str) {
-    int i = 0;
-    while (i < str.length()) {
-        if (!str.at(str.length() - 1 - i).isSpace())
-            return i;
-        ++i;
-    }
-    return i;
-}
-
-void FPwin::removeTrailingSpacesIfNeeded(TextEdit* textEdit) {
-    QString lang = textEdit->getFileName().isEmpty() ? textEdit->getLang() : textEdit->getProg();
-
-    // Skip "diff" or "locale.gen" per original logic
-    if (lang == "diff" || textEdit->getFileName().endsWith("/locale.gen")) {
-        return;
-    }
-
-    makeBusy();
-    // same block iteration as before
-    QTextBlock block = textEdit->document()->firstBlock();
-    QTextCursor tmpCur = textEdit->textCursor();
-    tmpCur.beginEditBlock();
-
-    // Check 'doubleSpace' for markdown, 'singleSpace' for LaTeX, etc.
-    bool doubleSpace = (lang == "markdown" || lang == "fountain");
-    bool singleSpace = (lang == "LaTeX");
-
-    while (block.isValid()) {
-        int num = trailingSpaces(block.text());
-        if (num > 0) {
-            tmpCur.setPosition(block.position() + block.text().length());
-            if (doubleSpace) {
-                if (num != 2)
-                    tmpCur.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor, std::max(1, num - 2));
-            }
-            else if (singleSpace) {
-                if (num > 1)
-                    tmpCur.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor, num - 1);
-            }
-            else {
-                tmpCur.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor, num);
-            }
-            tmpCur.removeSelectedText();
-        }
-        block = block.next();
-    }
-    tmpCur.endEditBlock();
-    unbusy();
-}
-
-static inline QStringEncoder getEncoder(const QString& encoding) {
-    if (encoding.compare("UTF-16", Qt::CaseInsensitive) == 0) {
-        return QStringEncoder(QStringConverter::Utf16,
-                              QStringConverter::Flag::WriteBom);  // needed with fwrite()
-    }
-    return QStringEncoder(encoding.compare("UTF-8", Qt::CaseInsensitive) == 0    ? QStringConverter::Utf8
-                          : encoding.compare("UTF-32", Qt::CaseInsensitive) == 0 ?  // not needed
-                              QStringConverter::Utf32
-                                                                                 : QStringConverter::Latin1);
-}
-/*************************/
-bool FPwin::showSaveDialogAndSetFileName(QString& fname, const QString& filter, const QString& title) {
-    if (hasAnotherDialog())
-        return false;
-    updateShortcuts(true);
-
-    FileDialog dialog(this, static_cast<FPsingleton*>(qApp)->getConfig().getNativeDialog());
-    dialog.setAcceptMode(QFileDialog::AcceptSave);
-    dialog.setWindowTitle(title);
-    dialog.setFileMode(QFileDialog::AnyFile);
-    dialog.setNameFilter(filter);
-
-    // workaround for some KDE file dialogs
-    const QString dirPath = fname.section(QLatin1Char('/'), 0, -2);
-    if (!dirPath.isEmpty())
-        dialog.setDirectory(dirPath);
-    dialog.selectFile(fname);
-    dialog.autoScroll();
-
-    const bool ok = dialog.exec();
-    updateShortcuts(false);
-    if (!ok)
-        return false;
-
-    const QString chosen = dialog.selectedFiles().value(0);
-    if (chosen.isEmpty() || QFileInfo(chosen).isDir())
-        return false;
-
-    fname = chosen;
-    return true;
-}
-
-/*************************/
-bool FPwin::writeFileWithEncoding(const QString& fname, TextEdit* textEdit, bool& MSWinLineEnd) {
-    const QString encoding = checkToEncoding();  // e.g. UTF-16 or ISO-8859-1
-    if (encoding == QLatin1String("UTF-16")) {
-        MSWinLineEnd = true;
-        return writeUtf16File(fname, textEdit);
-    }
-    // ask if user wants \r\n
-    return promptAndWriteWithChosenEOL(fname, textEdit, encoding, MSWinLineEnd);
-}
-
-/*************************/
-bool FPwin::writeUtf16File(const QString& fname, TextEdit* textEdit) {
-    // write UTF-16 with CRLF
-    QStringEncoder encoder = getEncoder(QStringLiteral("UTF-16"));
-    QString contents = textEdit->document()->toPlainText();
-    contents.replace(QLatin1Char('\n'), QLatin1String("\r\n"));
-
-    const QByteArray bytes = encoder.encode(contents);
-
-    QFile file(fname);
-    if (!file.open(QIODevice::WriteOnly))
-        return false;
-    const qint64 written = file.write(bytes);
-    file.flush();
-    file.close();
-    return written == bytes.size();
-}
-
-/*************************/
-bool FPwin::promptAndWriteWithChosenEOL(const QString& fname,
-                                        TextEdit* textEdit,
-                                        const QString& encoding,
-                                        bool& MSWinLineEnd) {
-    QStringEncoder encoder = getEncoder(encoding);
-
-    // temporarily disable shortcuts around the message box
-    updateShortcuts(true);
-
-    MessageBox msgBox(this);
-    msgBox.setIcon(QMessageBox::Question);
-    msgBox.addButton(QMessageBox::Yes);
-    msgBox.addButton(QMessageBox::No);
-    msgBox.addButton(QMessageBox::Cancel);
-    msgBox.changeButtonText(QMessageBox::Yes, tr("Yes"));
-    msgBox.changeButtonText(QMessageBox::No, tr("No"));
-    msgBox.changeButtonText(QMessageBox::Cancel, tr("Cancel"));
-    msgBox.setText(QStringLiteral("<center>%1</center>").arg(tr("Do you want to use <b>MS Windows</b> end-of-lines?")));
-    msgBox.setInformativeText(
-        QStringLiteral("<center><i>%1</i></center>").arg(tr("This may be good for readability under MS Windows")));
-    msgBox.setDefaultButton(QMessageBox::No);
-    msgBox.setWindowModality(Qt::WindowModal);
-
-    const int result = msgBox.exec();
-    updateShortcuts(false);
-    if (result == QMessageBox::Cancel)
-        return false;
-
-    QString contents = textEdit->document()->toPlainText();
-    if (result == QMessageBox::Yes) {
-        MSWinLineEnd = true;
-        contents.replace(QLatin1Char('\n'), QLatin1String("\r\n"));
-    }
-    else {
-        MSWinLineEnd = false;
-    }
-
-    const QByteArray bytes = encoder.encode(contents);
-
-    QFile file(fname);
-    if (!file.open(QIODevice::WriteOnly))
-        return false;
-    const qint64 written = file.write(bytes);
-    file.flush();
-    file.close();
-    return written == bytes.size();
-}
-
-/*************************/
-void FPwin::handleSaveFailure(const QString& fname) {
-    closePreviousPages_ = false;
-
-    const QString errorTitle = tr("Cannot be saved!");
-    const QString errorInfo = tr("Could not save the file: %1").arg(fname);
-
-    QTimer::singleShot(0, this, [this, errorTitle, errorInfo] {
-        showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>\n<center><i>%2</i></center>")
-                           .arg(errorTitle, errorInfo),
-                       15);
-    });
-}
-
-/*************************/
-// This is for both Save and Save As
-// See savePrompt() for the meanings of first and its following variables
-bool FPwin::saveFile(bool keepSyntax,
-                     int first,
-                     int last,
-                     bool closingWindow,
-                     QListWidgetItem* curItem,
-                     TabPage* curPage) {
-    if (!isReady()) {
-        closePreviousPages_ = false;
-        return false;
-    }
-
-    if (!curPage) {
-        const int currentIndex = ui->tabWidget->currentIndex();
-        curPage = qobject_cast<TabPage*>(ui->tabWidget->widget(currentIndex));
-    }
-    if (!curPage) {
-        closePreviousPages_ = false;
-        return false;
-    }
-
-    TextEdit* textEdit = curPage->textEdit();
-    QString fname = textEdit->getFileName();
-
-    // build filter
-    QString filter = tr("All Files") + QStringLiteral(" (*)");
-    if (!fname.isEmpty()) {
-        const QString ext = QFileInfo(fname).suffix();
-        if (!ext.isEmpty())
-            filter = QStringLiteral("*.%1;;").arg(ext) + tr("All Files") + QStringLiteral(" (*)");
-    }
-    else {
-        if (fname.isEmpty())
-            fname = lastFile_;
-    }
-
-    // decide whether to show Save As dialog
-    bool restorable = false;
-    const QObject* snd = QObject::sender();
-    const bool explicitSaveAs = (snd == ui->actionSaveAs);
-    const bool explicitSaveCodec = (snd == ui->actionSaveCodec);
-
-    if (fname.isEmpty() || !QFile::exists(fname) || textEdit->getFileName().isEmpty()) {
-        if (fname.isEmpty()) {
-            fname = QDir::home().filePath(tr("Untitled"));
-        }
-        else if (!QFile::exists(fname)) {
-            QFileInfo fi(fname);
-            QDir dir = fi.absoluteDir();
-            if (!dir.exists()) {
-                dir = QDir::home();
-                if (textEdit->getFileName().isEmpty())
-                    filter = tr("All Files") + QStringLiteral(" (*)");
-            }
-            else if (!textEdit->getFileName().isEmpty()) {
-                restorable = true;
-            }
-            fname = dir.filePath(textEdit->getFileName().isEmpty() ? tr("Untitled") : fi.fileName());
-        }
-        else {
-            QFileInfo fi(fname);
-            fname = fi.absoluteDir().filePath(tr("Untitled"));
-        }
-
-        if (!restorable && !explicitSaveAs && !explicitSaveCodec) {
-            if (!showSaveDialogAndSetFileName(fname, filter, tr("Save as..."))) {
-                closePreviousPages_ = false;
-                return false;
-            }
-        }
-    }
-
-    if (explicitSaveAs) {
-        if (!showSaveDialogAndSetFileName(fname, filter, tr("Save as..."))) {
-            closePreviousPages_ = false;
-            return false;
-        }
-    }
-    else if (explicitSaveCodec) {
-        if (!showSaveDialogAndSetFileName(fname, filter, tr("Keep encoding and save as..."))) {
-            closePreviousPages_ = false;
-            return false;
-        }
-    }
-
-    // whitespace cleanup
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
-    if (config.getRemoveTrailingSpaces())
-        removeTrailingSpacesIfNeeded(textEdit);
-
-    // append newline if requested
-    if (config.getAppendEmptyLine() && !textEdit->document()->lastBlock().text().isEmpty()) {
-        QTextCursor c = textEdit->textCursor();
-        c.beginEditBlock();
-        c.movePosition(QTextCursor::End);
-        c.insertBlock();
-        c.endEditBlock();
-    }
-
-    // write to disk
-    bool success = false;
-    bool MSWinLineEnd = false;
-
-    if (explicitSaveCodec) {
-        success = writeFileWithEncoding(fname, textEdit, MSWinLineEnd);
-    }
-    else {
-        encodingToCheck(QStringLiteral("UTF-8"));
-        QFile file(fname);
-        if (file.open(QIODevice::WriteOnly)) {
-            QTextDocumentWriter writer(&file, "plaintext");
-            success = writer.write(textEdit->document());
-            file.flush();
-            file.close();
-        }
-        else {
-            success = false;
-        }
-    }
-
-    if (success) {
-        const QFileInfo fi(fname);
-
-        textEdit->document()->setModified(false);
-        textEdit->setFileName(fname);
-        textEdit->setSize(fi.size());
-        textEdit->setLastModified(fi.lastModified());
-        ui->actionReload->setDisabled(false);
-        setTitle(fname);
-
-        // update tab tooltip
-        QString tipDir = fname.contains(QLatin1Char('/')) ? fname.section(QLatin1Char('/'), 0, -2) : fi.absolutePath();
-        if (!tipDir.endsWith(QLatin1Char('/')))
-            tipDir += QLatin1Char('/');
-        const QFontMetrics fm(QToolTip::font());
-        const QString elided =
-            QStringLiteral("<p style='white-space:pre'>%1</p>")
-                .arg(fm.elidedText(tipDir, Qt::ElideMiddle, 200 * fm.horizontalAdvance(QLatin1Char(' '))));
-        const int pageIndex = ui->tabWidget->indexOf(curPage);
-        ui->tabWidget->setTabToolTip(pageIndex, elided);
-        if (!sideItems_.isEmpty()) {
-            if (QListWidgetItem* wi = sideItems_.key(curPage))
-                wi->setToolTip(elided);
-        }
-
-        lastFile_ = fname;
-        addRecentFile(lastFile_);
-
-        // reload text if needed or refresh syntax
-        const bool outOfRange = (pageIndex <= first || (pageIndex >= last && last >= 0));
-        if (outOfRange && textEdit->getEncoding() != checkToEncoding()) {
-            loadText(fname, true, true, 0, 0, textEdit->isUneditable(), false);
-        }
-        else if (!keepSyntax) {
-            reloadSyntaxHighlighter(textEdit);
-        }
-
-        // make editable if it was read-only and not opened elsewhere
-        if (textEdit->isReadOnly() && !alreadyOpen(curPage))
-            QTimer::singleShot(0, this, &FPwin::makeEditable);
-    }
-    else {
-        handleSaveFailure(fname);
-    }
-
-    return success;
-}
-/*************************/
-void FPwin::reloadSyntaxHighlighter(
+void TexxyWindow::reloadSyntaxHighlighter(
     TextEdit* textEdit) {  // uninstall and reinstall the syntax highlighter if the programming language is changed
     QString prevLan = textEdit->getProg();
     setProgLang(textEdit);
     if (prevLan == textEdit->getProg())
         return;
 
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (config.getShowLangSelector() && config.getSyntaxByDefault()) {
         if (textEdit->getLang() == textEdit->getProg())
             textEdit->setLang(QString());  // not enforced because it's the real syntax
@@ -3159,7 +2803,7 @@ void FPwin::reloadSyntaxHighlighter(
     }
 
     if (ui->statusBar->isVisible() && textEdit->getWordNumber() != -1) {  // we want to change the statusbar text below
-        disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::updateWordInfo);
+        disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::updateWordInfo);
     }
 
     if (textEdit->getLang().isEmpty()) {  // restart the syntax highlighting only when the language isn't forced
@@ -3199,11 +2843,11 @@ void FPwin::reloadSyntaxHighlighter(
         }
         statusLabel->setText(str);
         if (textEdit->getWordNumber() != -1)
-            connect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::updateWordInfo);
+            connect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::updateWordInfo);
     }
 }
 /*************************/
-void FPwin::lockWindow(TabPage* tabPage, bool lock) {
+void TexxyWindow::lockWindow(TabPage* tabPage, bool lock) {
     locked_ = lock;
     if (lock) {
         pauseAutoSaving(true);
@@ -3238,22 +2882,22 @@ void FPwin::lockWindow(TabPage* tabPage, bool lock) {
     }
 }
 /*************************/
-void FPwin::cutText() {
+void TexxyWindow::cutText() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->cut();
 }
 /*************************/
-void FPwin::copyText() {
+void TexxyWindow::copyText() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->copy();
 }
 /*************************/
-void FPwin::pasteText() {
+void TexxyWindow::pasteText() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->paste();
 }
 /*************************/
-void FPwin::toSoftTabs() {
+void TexxyWindow::toSoftTabs() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         makeBusy();
         bool res = tabPage->textEdit()->toSoftTabs();
@@ -3265,9 +2909,9 @@ void FPwin::toSoftTabs() {
     }
 }
 /*************************/
-void FPwin::insertDate() {
+void TexxyWindow::insertDate() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+        Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
         QString format = config.getDateFormat();
         tabPage->textEdit()->insertPlainText(format.isEmpty()
                                                  ? locale().toString(QDateTime::currentDateTime(), QLocale::ShortFormat)
@@ -3275,7 +2919,7 @@ void FPwin::insertDate() {
     }
 }
 /*************************/
-void FPwin::deleteText() {
+void TexxyWindow::deleteText() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         TextEdit* textEdit = tabPage->textEdit();
         if (!textEdit->isReadOnly())
@@ -3283,12 +2927,12 @@ void FPwin::deleteText() {
     }
 }
 /*************************/
-void FPwin::selectAllText() {
+void TexxyWindow::selectAllText() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->selectAll();
 }
 /*************************/
-void FPwin::upperCase() {
+void TexxyWindow::upperCase() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         TextEdit* textEdit = tabPage->textEdit();
         if (!textEdit->isReadOnly())
@@ -3296,7 +2940,7 @@ void FPwin::upperCase() {
     }
 }
 /*************************/
-void FPwin::lowerCase() {
+void TexxyWindow::lowerCase() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         TextEdit* textEdit = tabPage->textEdit();
         if (!textEdit->isReadOnly())
@@ -3304,7 +2948,7 @@ void FPwin::lowerCase() {
     }
 }
 /*************************/
-void FPwin::startCase() {
+void TexxyWindow::startCase() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         TextEdit* textEdit = tabPage->textEdit();
         if (!textEdit->isReadOnly()) {
@@ -3363,7 +3007,7 @@ void FPwin::startCase() {
 /*************************/
 // Because sort line actions don't have shortcuts, their state can be set when
 // their menu is going to be shown. Also, the state of the paste action is set.
-void FPwin::showingEditMenu() {
+void TexxyWindow::showingEditMenu() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         TextEdit* textEdit = tabPage->textEdit();
         if (!textEdit->isReadOnly()) {
@@ -3391,7 +3035,7 @@ void FPwin::showingEditMenu() {
     ui->ActionSpaceDupeRSort->setEnabled(false);
 }
 /*************************/
-void FPwin::hidngEditMenu() {
+void TexxyWindow::hidngEditMenu() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         /* QPlainTextEdit::canPaste() isn't consulted because it might change later */
         ui->actionPaste->setEnabled(!tabPage->textEdit()->isReadOnly());
@@ -3400,22 +3044,22 @@ void FPwin::hidngEditMenu() {
         ui->actionPaste->setEnabled(false);
 }
 /*************************/
-void FPwin::sortLines() {
+void TexxyWindow::sortLines() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->sortLines(qobject_cast<QAction*>(QObject::sender()) == ui->actionRSortLines);
 }
 
-void FPwin::rmDupeSort() {
+void TexxyWindow::rmDupeSort() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->rmDupeSort(qobject_cast<QAction*>(QObject::sender()) == ui->ActionRmDupeRSort);
 }
 
-void FPwin::spaceDupeSort() {
+void TexxyWindow::spaceDupeSort() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->spaceDupeSort(qobject_cast<QAction*>(QObject::sender()) == ui->ActionSpaceDupeRSort);
 }
 /*************************/
-void FPwin::makeEditable() {
+void TexxyWindow::makeEditable() {
     if (!isReady())
         return;
 
@@ -3428,7 +3072,7 @@ void FPwin::makeEditable() {
     bool hasColumn = !textEdit->getColSel().isEmpty();
 
     textEdit->setReadOnly(false);
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (!textEdit->hasDarkScheme()) {
         textEdit->viewport()->setStyleSheet(QString(".QWidget {"
                                                     "color: black;"
@@ -3461,17 +3105,17 @@ void FPwin::makeEditable() {
         ui->actionSave->setEnabled(true);
 }
 /*************************/
-void FPwin::undoing() {
+void TexxyWindow::undoing() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->undo();
 }
 /*************************/
-void FPwin::redoing() {
+void TexxyWindow::redoing() {
     if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
         tabPage->textEdit()->redo();
 }
 /*************************/
-void FPwin::changeTab(QListWidgetItem* current) {
+void TexxyWindow::changeTab(QListWidgetItem* current) {
     if (!sidePane_ || sideItems_.isEmpty())
         return;
     /* "current" is never null; see the c-tor of ListWidget in "sidepane.cpp" */
@@ -3479,7 +3123,7 @@ void FPwin::changeTab(QListWidgetItem* current) {
 }
 /*************************/
 // Called immediately after changing tab (closes the warningbar if it isn't needed)
-void FPwin::onTabChanged(int index) {
+void TexxyWindow::onTabChanged(int index) {
     if (index > -1) {
         QString fname = qobject_cast<TabPage*>(ui->tabWidget->widget(index))->textEdit()->getFileName();
         if (fname.isEmpty() || QFile::exists(fname))
@@ -3490,7 +3134,7 @@ void FPwin::onTabChanged(int index) {
 }
 /*************************/
 // Called with a timeout after tab switching (changes the window title, sets action states, etc.)
-void FPwin::tabSwitch(int index) {
+void TexxyWindow::tabSwitch(int index) {
     TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->widget(index));
     if (tabPage == nullptr) {
         setWindowTitle("Texxy[*]");
@@ -3536,7 +3180,7 @@ void FPwin::tabSwitch(int index) {
     /* correct the encoding menu */
     encodingToCheck(textEdit->getEncoding());
 
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
 
     /* correct the states of some buttons */
     ui->actionUndo->setEnabled(textEdit->document()->isUndoAvailable());
@@ -3613,7 +3257,7 @@ void FPwin::tabSwitch(int index) {
         textEdit->setReplaceTitle(QString());
 }
 /*************************/
-void FPwin::fontDialog() {
+void TexxyWindow::fontDialog() {
     if (isLoading())
         return;
 
@@ -3634,14 +3278,14 @@ void FPwin::fontDialog() {
              y() + height()/2 - fd.height()/ 2);*/
     if (fd.exec()) {
         QFont newFont = fd.selectedFont();
-        Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+        Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
         if (config.getRemFont()) {
             config.setFont(newFont);
             config.writeConfig();
 
-            FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+            TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
             for (int i = 0; i < singleton->Wins.count(); ++i) {
-                FPwin* thisWin = singleton->Wins.at(i);
+                TexxyWindow* thisWin = singleton->Wins.at(i);
                 for (int j = 0; j < thisWin->ui->tabWidget->count(); ++j) {
                     TextEdit* thisTextEdit = qobject_cast<TabPage*>(thisWin->ui->tabWidget->widget(j))->textEdit();
                     thisTextEdit->setEditorFont(newFont);
@@ -3659,8 +3303,8 @@ void FPwin::fontDialog() {
     updateShortcuts(false);
 }
 /*************************/
-void FPwin::changeEvent(QEvent* event) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+void TexxyWindow::changeEvent(QEvent* event) {
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (event->type() == QEvent::WindowStateChange) {
         if (config.getRemSize()) {
             if (windowState() == Qt::WindowFullScreen) {
@@ -3684,7 +3328,7 @@ void FPwin::changeEvent(QEvent* event) {
             if (auto stateEvent = static_cast<QWindowStateChangeEvent*>(event)) {
                 if (!(stateEvent->oldState() & Qt::WindowMaximized) &&
                     !(stateEvent->oldState() & Qt::WindowFullScreen)) {
-                    if (config.getRemPos() && !static_cast<FPsingleton*>(qApp)->isWayland())
+                    if (config.getRemPos() && !static_cast<TexxyApplication*>(qApp)->isWayland())
                         config.setWinPos(geometry().topLeft());
                     if (config.getRemSize())
                         config.setWinSize(size());
@@ -3695,13 +3339,13 @@ void FPwin::changeEvent(QEvent* event) {
     QWidget::changeEvent(event);
 }
 /*************************/
-void FPwin::showEvent(QShowEvent* event) {
+void TexxyWindow::showEvent(QShowEvent* event) {
     /* To position the main window correctly when it's shown for
        the first time, we call setGeometry() inside showEvent(). */
     if (!shownBefore_ && !event->spontaneous()) {
         shownBefore_ = true;
-        Config config = static_cast<FPsingleton*>(qApp)->getConfig();
-        if (config.getRemPos() && !static_cast<FPsingleton*>(qApp)->isWayland()) {
+        Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
+        if (config.getRemPos() && !static_cast<TexxyApplication*>(qApp)->isWayland()) {
             QSize theSize = (config.getRemSize() ? config.getWinSize() : config.getStartSize());
             setGeometry(QRect(config.getWinPos(), theSize));
             if (config.getIsFull() && config.getIsMaxed())
@@ -3715,7 +3359,7 @@ void FPwin::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
 }
 /*************************/
-bool FPwin::event(QEvent* event) {
+bool TexxyWindow::event(QEvent* event) {
     if (event->type() == QEvent::ActivationChange && isActiveWindow()) {
         if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
             TextEdit* textEdit = tabPage->textEdit();
@@ -3723,7 +3367,7 @@ bool FPwin::event(QEvent* event) {
             if (!fname.isEmpty()) {
                 if (!QFile::exists(fname)) {
                     if (isLoading())
-                        connect(this, &FPwin::finishedLoading, this, &FPwin::onOpeningNonexistent,
+                        connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningNonexistent,
                                 Qt::UniqueConnection);
                     else
                         onOpeningNonexistent();
@@ -3739,7 +3383,7 @@ bool FPwin::event(QEvent* event) {
     return QMainWindow::event(event);
 }
 /*************************/
-void FPwin::showHideSearch() {
+void TexxyWindow::showHideSearch() {
     if (!isReady())
         return;
 
@@ -3779,7 +3423,7 @@ void FPwin::showHideSearch() {
     }
 }
 /*************************/
-void FPwin::jumpTo() {
+void TexxyWindow::jumpTo() {
     if (!isReady())
         return;
 
@@ -3792,10 +3436,10 @@ void FPwin::jumpTo() {
 
         if (!visibility) {
             /* setMaximum() isn't a slot */
-            connect(thisTextEdit->document(), &QTextDocument::blockCountChanged, this, &FPwin::setMax);
+            connect(thisTextEdit->document(), &QTextDocument::blockCountChanged, this, &TexxyWindow::setMax);
         }
         else
-            disconnect(thisTextEdit->document(), &QTextDocument::blockCountChanged, this, &FPwin::setMax);
+            disconnect(thisTextEdit->document(), &QTextDocument::blockCountChanged, this, &TexxyWindow::setMax);
     }
 
     TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
@@ -3814,11 +3458,11 @@ void FPwin::jumpTo() {
         tabPage->textEdit()->setFocus();
 }
 /*************************/
-void FPwin::setMax(const int max) {
+void TexxyWindow::setMax(const int max) {
     ui->spinBox->setMaximum(max);
 }
 /*************************/
-void FPwin::goTo() {
+void TexxyWindow::goTo() {
     /* workaround for not being able to use returnPressed()
        because of protectedness of spinbox's QLineEdit */
     if (!ui->spinBox->hasFocus())
@@ -3837,7 +3481,7 @@ void FPwin::goTo() {
     }
 }
 /*************************/
-void FPwin::showLN(bool checked) {
+void TexxyWindow::showLN(bool checked) {
     int count = ui->tabWidget->count();
     if (count == 0)
         return;
@@ -3853,7 +3497,7 @@ void FPwin::showLN(bool checked) {
     }
 }
 /*************************/
-void FPwin::toggleWrapping() {
+void TexxyWindow::toggleWrapping() {
     int count = ui->tabWidget->count();
     if (count == 0)
         return;
@@ -3868,7 +3512,7 @@ void FPwin::toggleWrapping() {
         reformat(tabPage->textEdit());
 }
 /*************************/
-void FPwin::toggleIndent() {
+void TexxyWindow::toggleIndent() {
     int count = ui->tabWidget->count();
     if (count == 0)
         return;
@@ -3883,7 +3527,7 @@ void FPwin::toggleIndent() {
     }
 }
 /*************************/
-void FPwin::encodingToCheck(const QString& encoding) {
+void TexxyWindow::encodingToCheck(const QString& encoding) {
     ui->actionOther->setDisabled(true);
 
     if (encoding == "UTF-8")
@@ -3898,7 +3542,7 @@ void FPwin::encodingToCheck(const QString& encoding) {
     }
 }
 /*************************/
-const QString FPwin::checkToEncoding() const {
+const QString TexxyWindow::checkToEncoding() const {
     QString encoding;
 
     if (ui->actionUTF_8->isChecked())
@@ -3913,15 +3557,15 @@ const QString FPwin::checkToEncoding() const {
     return encoding;
 }
 /*************************/
-void FPwin::docProp() {
-    bool showCurPos = static_cast<FPsingleton*>(qApp)->getConfig().getShowCursorPos();
+void TexxyWindow::docProp() {
+    bool showCurPos = static_cast<TexxyApplication*>(qApp)->getConfig().getShowCursorPos();
     if (ui->statusBar->isVisible()) {
         for (int i = 0; i < ui->tabWidget->count(); ++i) {
             TextEdit* thisTextEdit = qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit();
-            disconnect(thisTextEdit, &QPlainTextEdit::blockCountChanged, this, &FPwin::statusMsgWithLineCount);
-            disconnect(thisTextEdit, &TextEdit::selChanged, this, &FPwin::statusMsg);
+            disconnect(thisTextEdit, &QPlainTextEdit::blockCountChanged, this, &TexxyWindow::statusMsgWithLineCount);
+            disconnect(thisTextEdit, &TextEdit::selChanged, this, &TexxyWindow::statusMsg);
             if (showCurPos)
-                disconnect(thisTextEdit, &QPlainTextEdit::cursorPositionChanged, this, &FPwin::showCursorPos);
+                disconnect(thisTextEdit, &QPlainTextEdit::cursorPositionChanged, this, &TexxyWindow::showCursorPos);
             /* don't delete the cursor position label because the statusbar might be shown later */
         }
         ui->statusBar->setVisible(false);
@@ -3935,10 +3579,10 @@ void FPwin::docProp() {
     statusMsgWithLineCount(tabPage->textEdit()->document()->blockCount());
     for (int i = 0; i < ui->tabWidget->count(); ++i) {
         TextEdit* thisTextEdit = qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit();
-        connect(thisTextEdit, &QPlainTextEdit::blockCountChanged, this, &FPwin::statusMsgWithLineCount);
-        connect(thisTextEdit, &TextEdit::selChanged, this, &FPwin::statusMsg);
+        connect(thisTextEdit, &QPlainTextEdit::blockCountChanged, this, &TexxyWindow::statusMsgWithLineCount);
+        connect(thisTextEdit, &TextEdit::selChanged, this, &TexxyWindow::statusMsg);
         if (showCurPos)
-            connect(thisTextEdit, &QPlainTextEdit::cursorPositionChanged, this, &FPwin::showCursorPos);
+            connect(thisTextEdit, &QPlainTextEdit::cursorPositionChanged, this, &TexxyWindow::showCursorPos);
     }
 
     ui->statusBar->setVisible(true);
@@ -3952,7 +3596,7 @@ void FPwin::docProp() {
 }
 /*************************/
 // Set the status bar text according to the block count.
-void FPwin::statusMsgWithLineCount(const int lines) {
+void TexxyWindow::statusMsgWithLineCount(const int lines) {
     TextEdit* textEdit = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())->textEdit();
     /* ensure that the signal comes from the active tab if this is about a connection */
     if (qobject_cast<TextEdit*>(QObject::sender()) && QObject::sender() != textEdit)
@@ -3975,7 +3619,7 @@ void FPwin::statusMsgWithLineCount(const int lines) {
 }
 /*************************/
 // Change the status bar text when the selection changes.
-void FPwin::statusMsg() {
+void TexxyWindow::statusMsg() {
     QLocale l = locale();
     QLabel* statusLabel = ui->statusBar->findChild<QLabel*>("statusLabel");
     int sel = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())->textEdit()->selectionSize();
@@ -3994,7 +3638,7 @@ void FPwin::statusMsg() {
     statusLabel->setText(str);
 }
 /*************************/
-void FPwin::showCursorPos() {
+void TexxyWindow::showCursorPos() {
     QLabel* posLabel = ui->statusBar->findChild<QLabel*>("posLabel");
     if (!posLabel)
         return;
@@ -4012,7 +3656,7 @@ void FPwin::showCursorPos() {
     posLabel->setText(str);
 }
 /*************************/
-void FPwin::updateLangBtn(TextEdit* textEdit) {
+void TexxyWindow::updateLangBtn(TextEdit* textEdit) {
     QToolButton* langButton = ui->statusBar->findChild<QToolButton*>("langButton");
     if (!langButton)
         return;
@@ -4031,7 +3675,7 @@ void FPwin::updateLangBtn(TextEdit* textEdit) {
         action->setChecked(true);
 }
 /*************************/
-void FPwin::enforceLang(QAction* action) {
+void TexxyWindow::enforceLang(QAction* action) {
     QToolButton* langButton = ui->statusBar->findChild<QToolButton*>("langButton");
     if (!langButton)
         return;
@@ -4061,11 +3705,11 @@ void FPwin::enforceLang(QAction* action) {
         syntaxHighlighting(textEdit, false);
         makeBusy();  // it may take a while with huge texts
         syntaxHighlighting(textEdit, true, lang);
-        QTimer::singleShot(0, this, &FPwin::unbusy);
+        QTimer::singleShot(0, this, &TexxyWindow::unbusy);
     }
 }
 /*************************/
-void FPwin::updateWordInfo(int /*position*/, int charsRemoved, int charsAdded) {
+void TexxyWindow::updateWordInfo(int /*position*/, int charsRemoved, int charsAdded) {
     QToolButton* wordButton = ui->statusBar->findChild<QToolButton*>("wordButton");
     if (!wordButton)
         return;
@@ -4087,18 +3731,18 @@ void FPwin::updateWordInfo(int /*position*/, int charsRemoved, int charsAdded) {
 
         wordButton->setVisible(false);
         statusLabel->setText(QString("%1 <i>%2</i>").arg(statusLabel->text(), locale().toString(words)));
-        connect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::updateWordInfo);
+        connect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::updateWordInfo);
     }
     else if (charsRemoved > 0 || charsAdded > 0)  // not if only the format is changed
     {
-        disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::updateWordInfo);
+        disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::updateWordInfo);
         textEdit->setWordNumber(-1);
         wordButton->setVisible(true);
         statusMsgWithLineCount(textEdit->document()->blockCount());
     }
 }
 /*************************/
-void FPwin::filePrint() {
+void TexxyWindow::filePrint() {
     if (isLoading() || hasAnotherDialog())
         return;
 
@@ -4129,7 +3773,7 @@ void FPwin::filePrint() {
             block = block.next();
         }
     }
-    QTimer::singleShot(0, this, &FPwin::unbusy);  // wait for the dialog too
+    QTimer::singleShot(0, this, &TexxyWindow::unbusy);  // wait for the dialog too
 
     /* choose an appropriate name and directory */
     QString fileName = textEdit->getFileName();
@@ -4164,7 +3808,7 @@ void FPwin::filePrint() {
     }
 }
 /*************************/
-void FPwin::nextTab() {
+void TexxyWindow::nextTab() {
     if (isLoading())
         return;
 
@@ -4181,7 +3825,7 @@ void FPwin::nextTab() {
             }
         }
         if (curRow == sidePane_->listWidget()->count() - 1) {
-            if (static_cast<FPsingleton*>(qApp)->getConfig().getTabWrapAround())
+            if (static_cast<TexxyApplication*>(qApp)->getConfig().getTabWrapAround())
                 sidePane_->listWidget()->setCurrentRow(0);
         }
         else
@@ -4190,12 +3834,12 @@ void FPwin::nextTab() {
     else {
         if (QWidget* widget = ui->tabWidget->widget(index + 1))
             ui->tabWidget->setCurrentWidget(widget);
-        else if (static_cast<FPsingleton*>(qApp)->getConfig().getTabWrapAround())
+        else if (static_cast<TexxyApplication*>(qApp)->getConfig().getTabWrapAround())
             ui->tabWidget->setCurrentIndex(0);
     }
 }
 /*************************/
-void FPwin::previousTab() {
+void TexxyWindow::previousTab() {
     if (isLoading())
         return;
 
@@ -4212,7 +3856,7 @@ void FPwin::previousTab() {
             }
         }
         if (curRow == 0) {
-            if (static_cast<FPsingleton*>(qApp)->getConfig().getTabWrapAround())
+            if (static_cast<TexxyApplication*>(qApp)->getConfig().getTabWrapAround())
                 sidePane_->listWidget()->setCurrentRow(sidePane_->listWidget()->count() - 1);
         }
         else
@@ -4221,7 +3865,7 @@ void FPwin::previousTab() {
     else {
         if (QWidget* widget = ui->tabWidget->widget(index - 1))
             ui->tabWidget->setCurrentWidget(widget);
-        else if (static_cast<FPsingleton*>(qApp)->getConfig().getTabWrapAround()) {
+        else if (static_cast<TexxyApplication*>(qApp)->getConfig().getTabWrapAround()) {
             int count = ui->tabWidget->count();
             if (count > 0)
                 ui->tabWidget->setCurrentIndex(count - 1);
@@ -4229,7 +3873,7 @@ void FPwin::previousTab() {
     }
 }
 /*************************/
-void FPwin::lastTab() {
+void TexxyWindow::lastTab() {
     if (isLoading())
         return;
 
@@ -4245,7 +3889,7 @@ void FPwin::lastTab() {
     }
 }
 /*************************/
-void FPwin::firstTab() {
+void TexxyWindow::firstTab() {
     if (isLoading())
         return;
 
@@ -4257,7 +3901,7 @@ void FPwin::firstTab() {
         ui->tabWidget->setCurrentIndex(0);
 }
 /*************************/
-void FPwin::lastActiveTab() {
+void TexxyWindow::lastActiveTab() {
     if (sidePane_) {
         if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->getLastActiveTab())) {
             if (QListWidgetItem* wi = sideItems_.key(tabPage))
@@ -4268,7 +3912,7 @@ void FPwin::lastActiveTab() {
         ui->tabWidget->selectLastActiveTab();
 }
 /*************************/
-void FPwin::detachTab() {
+void TexxyWindow::detachTab() {
     if (!isReady())
         return;
 
@@ -4283,7 +3927,7 @@ void FPwin::detachTab() {
         return;
     }
 
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
 
     /*****************************************************
      *****          Get all necessary info.          *****
@@ -4312,14 +3956,14 @@ void FPwin::detachTab() {
 
     TextEdit* textEdit = tabPage->textEdit();
 
-    disconnect(textEdit, &TextEdit::resized, this, &FPwin::hlight);
-    disconnect(textEdit, &TextEdit::updateRect, this, &FPwin::hlight);
-    disconnect(textEdit, &QPlainTextEdit::textChanged, this, &FPwin::hlight);
+    disconnect(textEdit, &TextEdit::resized, this, &TexxyWindow::hlight);
+    disconnect(textEdit, &TextEdit::updateRect, this, &TexxyWindow::hlight);
+    disconnect(textEdit, &QPlainTextEdit::textChanged, this, &TexxyWindow::hlight);
     if (status) {
-        disconnect(textEdit, &QPlainTextEdit::blockCountChanged, this, &FPwin::statusMsgWithLineCount);
-        disconnect(textEdit, &TextEdit::selChanged, this, &FPwin::statusMsg);
+        disconnect(textEdit, &QPlainTextEdit::blockCountChanged, this, &TexxyWindow::statusMsgWithLineCount);
+        disconnect(textEdit, &TextEdit::selChanged, this, &TexxyWindow::statusMsg);
         if (statusCurPos)
-            disconnect(textEdit, &QPlainTextEdit::cursorPositionChanged, this, &FPwin::showCursorPos);
+            disconnect(textEdit, &QPlainTextEdit::cursorPositionChanged, this, &TexxyWindow::showCursorPos);
     }
     disconnect(textEdit, &TextEdit::canCopy, ui->actionCut, &QAction::setEnabled);
     disconnect(textEdit, &TextEdit::canCopy, ui->actionDelete, &QAction::setEnabled);
@@ -4327,26 +3971,26 @@ void FPwin::detachTab() {
     disconnect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionLowerCase, &QAction::setEnabled);
     disconnect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionStartCase, &QAction::setEnabled);
     disconnect(textEdit, &TextEdit::canCopy, ui->actionCopy, &QAction::setEnabled);
-    disconnect(textEdit, &QWidget::customContextMenuRequested, this, &FPwin::editorContextMenu);
-    disconnect(textEdit, &TextEdit::zoomedOut, this, &FPwin::reformat);
-    disconnect(textEdit, &TextEdit::hugeColumn, this, &FPwin::columnWarning);
-    disconnect(textEdit, &TextEdit::filePasted, this, &FPwin::newTabFromName);
-    disconnect(textEdit, &TextEdit::updateBracketMatching, this, &FPwin::matchBrackets);
-    disconnect(textEdit, &QPlainTextEdit::blockCountChanged, this, &FPwin::formatOnBlockChange);
-    disconnect(textEdit, &TextEdit::updateRect, this, &FPwin::formatTextRect);
-    disconnect(textEdit, &TextEdit::resized, this, &FPwin::formatTextRect);
+    disconnect(textEdit, &QWidget::customContextMenuRequested, this, &TexxyWindow::editorContextMenu);
+    disconnect(textEdit, &TextEdit::zoomedOut, this, &TexxyWindow::reformat);
+    disconnect(textEdit, &TextEdit::hugeColumn, this, &TexxyWindow::columnWarning);
+    disconnect(textEdit, &TextEdit::filePasted, this, &TexxyWindow::newTabFromName);
+    disconnect(textEdit, &TextEdit::updateBracketMatching, this, &TexxyWindow::matchBrackets);
+    disconnect(textEdit, &QPlainTextEdit::blockCountChanged, this, &TexxyWindow::formatOnBlockChange);
+    disconnect(textEdit, &TextEdit::updateRect, this, &TexxyWindow::formatTextRect);
+    disconnect(textEdit, &TextEdit::resized, this, &TexxyWindow::formatTextRect);
 
-    disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::updateWordInfo);
-    disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::formatOnTextChange);
-    disconnect(textEdit->document(), &QTextDocument::blockCountChanged, this, &FPwin::setMax);
-    disconnect(textEdit->document(), &QTextDocument::modificationChanged, this, &FPwin::asterisk);
+    disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::updateWordInfo);
+    disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::formatOnTextChange);
+    disconnect(textEdit->document(), &QTextDocument::blockCountChanged, this, &TexxyWindow::setMax);
+    disconnect(textEdit->document(), &QTextDocument::modificationChanged, this, &TexxyWindow::asterisk);
     disconnect(textEdit->document(), &QTextDocument::undoAvailable, ui->actionUndo, &QAction::setEnabled);
     disconnect(textEdit->document(), &QTextDocument::redoAvailable, ui->actionRedo, &QAction::setEnabled);
     if (!config.getSaveUnmodified())
-        disconnect(textEdit->document(), &QTextDocument::modificationChanged, this, &FPwin::enableSaving);
+        disconnect(textEdit->document(), &QTextDocument::modificationChanged, this, &TexxyWindow::enableSaving);
 
-    disconnect(tabPage, &TabPage::find, this, &FPwin::find);
-    disconnect(tabPage, &TabPage::searchFlagChanged, this, &FPwin::searchFlagChanged);
+    disconnect(tabPage, &TabPage::find, this, &TexxyWindow::find);
+    disconnect(tabPage, &TabPage::searchFlagChanged, this, &TexxyWindow::searchFlagChanged);
 
     /* for tabbar to be updated peoperly with tab reordering during a
        fast drag-and-drop, mouse should be released before tab removal */
@@ -4366,8 +4010,8 @@ void FPwin::detachTab() {
      ***** create a new window and replace its tab by this widget. *****
      *******************************************************************/
 
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
-    FPwin* dropTarget = singleton->newWin();
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
+    TexxyWindow* dropTarget = singleton->newWin();
 
     /* remove the single empty tab, as in closeTabAtIndex() */
     dropTarget->deleteTabPage(0, false, false);
@@ -4439,15 +4083,15 @@ void FPwin::detachTab() {
         dropTarget->ui->spinBox->setVisible(true);
         dropTarget->ui->label->setVisible(true);
         dropTarget->ui->spinBox->setMaximum(textEdit->document()->blockCount());
-        connect(textEdit->document(), &QTextDocument::blockCountChanged, dropTarget, &FPwin::setMax);
+        connect(textEdit->document(), &QTextDocument::blockCountChanged, dropTarget, &TexxyWindow::setMax);
     }
     if (ln)
         dropTarget->ui->actionLineNumbers->setChecked(true);
     /* searching */
     if (!textEdit->getSearchedText().isEmpty()) {
-        connect(textEdit, &QPlainTextEdit::textChanged, dropTarget, &FPwin::hlight);
-        connect(textEdit, &TextEdit::updateRect, dropTarget, &FPwin::hlight);
-        connect(textEdit, &TextEdit::resized, dropTarget, &FPwin::hlight);
+        connect(textEdit, &QPlainTextEdit::textChanged, dropTarget, &TexxyWindow::hlight);
+        connect(textEdit, &TextEdit::updateRect, dropTarget, &TexxyWindow::hlight);
+        connect(textEdit, &TextEdit::resized, dropTarget, &TexxyWindow::hlight);
         /* restore yellow highlights, which will automatically
            set the current line highlight if needed because the
            spin button and line number menuitem are set above */
@@ -4467,14 +4111,14 @@ void FPwin::detachTab() {
             QLabel* statusLabel = dropTarget->ui->statusBar->findChild<QLabel*>("statusLabel");
             statusLabel->setText(
                 QString("%1 <i>%2</i>").arg(statusLabel->text(), locale().toString(textEdit->getWordNumber())));
-            connect(textEdit->document(), &QTextDocument::contentsChange, dropTarget, &FPwin::updateWordInfo);
+            connect(textEdit->document(), &QTextDocument::contentsChange, dropTarget, &TexxyWindow::updateWordInfo);
         }
-        connect(textEdit, &QPlainTextEdit::blockCountChanged, dropTarget, &FPwin::statusMsgWithLineCount);
-        connect(textEdit, &TextEdit::selChanged, dropTarget, &FPwin::statusMsg);
+        connect(textEdit, &QPlainTextEdit::blockCountChanged, dropTarget, &TexxyWindow::statusMsgWithLineCount);
+        connect(textEdit, &TextEdit::selChanged, dropTarget, &TexxyWindow::statusMsg);
         if (statusCurPos) {
             dropTarget->addCursorPosLabel();
             dropTarget->showCursorPos();
-            connect(textEdit, &QPlainTextEdit::cursorPositionChanged, dropTarget, &FPwin::showCursorPos);
+            connect(textEdit, &QPlainTextEdit::cursorPositionChanged, dropTarget, &TexxyWindow::showCursorPos);
         }
     }
     if (textEdit->lineWrapMode() == QPlainTextEdit::NoWrap)
@@ -4486,12 +4130,12 @@ void FPwin::detachTab() {
     connect(textEdit->document(), &QTextDocument::undoAvailable, dropTarget->ui->actionUndo, &QAction::setEnabled);
     connect(textEdit->document(), &QTextDocument::redoAvailable, dropTarget->ui->actionRedo, &QAction::setEnabled);
     if (!config.getSaveUnmodified())
-        connect(textEdit->document(), &QTextDocument::modificationChanged, dropTarget, &FPwin::enableSaving);
-    connect(textEdit->document(), &QTextDocument::modificationChanged, dropTarget, &FPwin::asterisk);
+        connect(textEdit->document(), &QTextDocument::modificationChanged, dropTarget, &TexxyWindow::enableSaving);
+    connect(textEdit->document(), &QTextDocument::modificationChanged, dropTarget, &TexxyWindow::asterisk);
     connect(textEdit, &TextEdit::canCopy, dropTarget->ui->actionCopy, &QAction::setEnabled);
 
-    connect(tabPage, &TabPage::find, dropTarget, &FPwin::find);
-    connect(tabPage, &TabPage::searchFlagChanged, dropTarget, &FPwin::searchFlagChanged);
+    connect(tabPage, &TabPage::find, dropTarget, &TexxyWindow::find);
+    connect(tabPage, &TabPage::searchFlagChanged, dropTarget, &TexxyWindow::searchFlagChanged);
 
     if (!textEdit->isReadOnly()) {
         connect(textEdit, &TextEdit::canCopy, dropTarget->ui->actionCut, &QAction::setEnabled);
@@ -4500,17 +4144,17 @@ void FPwin::detachTab() {
         connect(textEdit, &QPlainTextEdit::copyAvailable, dropTarget->ui->actionLowerCase, &QAction::setEnabled);
         connect(textEdit, &QPlainTextEdit::copyAvailable, dropTarget->ui->actionStartCase, &QAction::setEnabled);
     }
-    connect(textEdit, &TextEdit::filePasted, dropTarget, &FPwin::newTabFromName);
-    connect(textEdit, &TextEdit::zoomedOut, dropTarget, &FPwin::reformat);
-    connect(textEdit, &TextEdit::hugeColumn, dropTarget, &FPwin::columnWarning);
-    connect(textEdit, &QWidget::customContextMenuRequested, dropTarget, &FPwin::editorContextMenu);
+    connect(textEdit, &TextEdit::filePasted, dropTarget, &TexxyWindow::newTabFromName);
+    connect(textEdit, &TextEdit::zoomedOut, dropTarget, &TexxyWindow::reformat);
+    connect(textEdit, &TextEdit::hugeColumn, dropTarget, &TexxyWindow::columnWarning);
+    connect(textEdit, &QWidget::customContextMenuRequested, dropTarget, &TexxyWindow::editorContextMenu);
 
     textEdit->setFocus();
 
     dropTarget->stealFocus();
 }
 /*************************/
-void FPwin::dropTab(const QString& str, QObject* source) {
+void TexxyWindow::dropTab(const QString& str, QObject* source) {
     QWidget* w = qobject_cast<QWidget*>(source);
     if (w == nullptr || str.isEmpty())  // impossible
     {
@@ -4524,7 +4168,7 @@ void FPwin::dropTab(const QString& str, QObject* source) {
         return;
     }
 
-    FPwin* dragSource = qobject_cast<FPwin*>(w->window());
+    TexxyWindow* dragSource = qobject_cast<TexxyWindow*>(w->window());
     if (dragSource == this || dragSource == nullptr)  // impossible
     {
         ui->tabWidget->tabBar()->finishMouseMoveEvent();
@@ -4550,16 +4194,16 @@ void FPwin::dropTab(const QString& str, QObject* source) {
     if (dragSource->ui->actionLineNumbers->isChecked())
         ln = true;
 
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
 
-    disconnect(textEdit, &TextEdit::resized, dragSource, &FPwin::hlight);
-    disconnect(textEdit, &TextEdit::updateRect, dragSource, &FPwin::hlight);
-    disconnect(textEdit, &QPlainTextEdit::textChanged, dragSource, &FPwin::hlight);
+    disconnect(textEdit, &TextEdit::resized, dragSource, &TexxyWindow::hlight);
+    disconnect(textEdit, &TextEdit::updateRect, dragSource, &TexxyWindow::hlight);
+    disconnect(textEdit, &QPlainTextEdit::textChanged, dragSource, &TexxyWindow::hlight);
     if (dragSource->ui->statusBar->isVisible()) {
-        disconnect(textEdit, &QPlainTextEdit::blockCountChanged, dragSource, &FPwin::statusMsgWithLineCount);
-        disconnect(textEdit, &TextEdit::selChanged, dragSource, &FPwin::statusMsg);
+        disconnect(textEdit, &QPlainTextEdit::blockCountChanged, dragSource, &TexxyWindow::statusMsgWithLineCount);
+        disconnect(textEdit, &TextEdit::selChanged, dragSource, &TexxyWindow::statusMsg);
         if (dragSource->ui->statusBar->findChild<QLabel*>("posLabel"))
-            disconnect(textEdit, &QPlainTextEdit::cursorPositionChanged, dragSource, &FPwin::showCursorPos);
+            disconnect(textEdit, &QPlainTextEdit::cursorPositionChanged, dragSource, &TexxyWindow::showCursorPos);
     }
     disconnect(textEdit, &TextEdit::canCopy, dragSource->ui->actionCut, &QAction::setEnabled);
     disconnect(textEdit, &TextEdit::canCopy, dragSource->ui->actionDelete, &QAction::setEnabled);
@@ -4567,26 +4211,26 @@ void FPwin::dropTab(const QString& str, QObject* source) {
     disconnect(textEdit, &QPlainTextEdit::copyAvailable, dragSource->ui->actionLowerCase, &QAction::setEnabled);
     disconnect(textEdit, &QPlainTextEdit::copyAvailable, dragSource->ui->actionStartCase, &QAction::setEnabled);
     disconnect(textEdit, &TextEdit::canCopy, dragSource->ui->actionCopy, &QAction::setEnabled);
-    disconnect(textEdit, &QWidget::customContextMenuRequested, dragSource, &FPwin::editorContextMenu);
-    disconnect(textEdit, &TextEdit::zoomedOut, dragSource, &FPwin::reformat);
-    disconnect(textEdit, &TextEdit::hugeColumn, dragSource, &FPwin::columnWarning);
-    disconnect(textEdit, &TextEdit::filePasted, dragSource, &FPwin::newTabFromName);
-    disconnect(textEdit, &TextEdit::updateBracketMatching, dragSource, &FPwin::matchBrackets);
-    disconnect(textEdit, &QPlainTextEdit::blockCountChanged, dragSource, &FPwin::formatOnBlockChange);
-    disconnect(textEdit, &TextEdit::updateRect, dragSource, &FPwin::formatTextRect);
-    disconnect(textEdit, &TextEdit::resized, dragSource, &FPwin::formatTextRect);
+    disconnect(textEdit, &QWidget::customContextMenuRequested, dragSource, &TexxyWindow::editorContextMenu);
+    disconnect(textEdit, &TextEdit::zoomedOut, dragSource, &TexxyWindow::reformat);
+    disconnect(textEdit, &TextEdit::hugeColumn, dragSource, &TexxyWindow::columnWarning);
+    disconnect(textEdit, &TextEdit::filePasted, dragSource, &TexxyWindow::newTabFromName);
+    disconnect(textEdit, &TextEdit::updateBracketMatching, dragSource, &TexxyWindow::matchBrackets);
+    disconnect(textEdit, &QPlainTextEdit::blockCountChanged, dragSource, &TexxyWindow::formatOnBlockChange);
+    disconnect(textEdit, &TextEdit::updateRect, dragSource, &TexxyWindow::formatTextRect);
+    disconnect(textEdit, &TextEdit::resized, dragSource, &TexxyWindow::formatTextRect);
 
-    disconnect(textEdit->document(), &QTextDocument::contentsChange, dragSource, &FPwin::updateWordInfo);
-    disconnect(textEdit->document(), &QTextDocument::contentsChange, dragSource, &FPwin::formatOnTextChange);
-    disconnect(textEdit->document(), &QTextDocument::blockCountChanged, dragSource, &FPwin::setMax);
-    disconnect(textEdit->document(), &QTextDocument::modificationChanged, dragSource, &FPwin::asterisk);
+    disconnect(textEdit->document(), &QTextDocument::contentsChange, dragSource, &TexxyWindow::updateWordInfo);
+    disconnect(textEdit->document(), &QTextDocument::contentsChange, dragSource, &TexxyWindow::formatOnTextChange);
+    disconnect(textEdit->document(), &QTextDocument::blockCountChanged, dragSource, &TexxyWindow::setMax);
+    disconnect(textEdit->document(), &QTextDocument::modificationChanged, dragSource, &TexxyWindow::asterisk);
     disconnect(textEdit->document(), &QTextDocument::undoAvailable, dragSource->ui->actionUndo, &QAction::setEnabled);
     disconnect(textEdit->document(), &QTextDocument::redoAvailable, dragSource->ui->actionRedo, &QAction::setEnabled);
     if (!config.getSaveUnmodified())
-        disconnect(textEdit->document(), &QTextDocument::modificationChanged, dragSource, &FPwin::enableSaving);
+        disconnect(textEdit->document(), &QTextDocument::modificationChanged, dragSource, &TexxyWindow::enableSaving);
 
-    disconnect(tabPage, &TabPage::find, dragSource, &FPwin::find);
-    disconnect(tabPage, &TabPage::searchFlagChanged, dragSource, &FPwin::searchFlagChanged);
+    disconnect(tabPage, &TabPage::find, dragSource, &TexxyWindow::find);
+    disconnect(tabPage, &TabPage::searchFlagChanged, dragSource, &TexxyWindow::searchFlagChanged);
 
     /* it's important to release mouse before tab removal because otherwise, the source
        tabbar might not be updated properly with tab reordering during a fast drag-and-drop */
@@ -4675,7 +4319,7 @@ void FPwin::dropTab(const QString& str, QObject* source) {
     if (ui->actionSyntax->isChecked()) {
         makeBusy();  // it may take a while with huge texts
         syntaxHighlighting(textEdit, true, textEdit->getLang());
-        QTimer::singleShot(0, this, &FPwin::unbusy);
+        QTimer::singleShot(0, this, &TexxyWindow::unbusy);
     }
     else if (!ui->actionSyntax->isChecked() &&
              textEdit->getHighlighter()) {  // there's no connction to the drag target yet
@@ -4685,16 +4329,16 @@ void FPwin::dropTab(const QString& str, QObject* source) {
         highlighter = nullptr;
     }
     if (ui->spinBox->isVisible())
-        connect(textEdit->document(), &QTextDocument::blockCountChanged, this, &FPwin::setMax);
+        connect(textEdit->document(), &QTextDocument::blockCountChanged, this, &TexxyWindow::setMax);
     if (ui->actionLineNumbers->isChecked() || ui->spinBox->isVisible())
         textEdit->showLineNumbers(true);
     else
         textEdit->showLineNumbers(false);
     /* searching */
     if (!textEdit->getSearchedText().isEmpty()) {
-        connect(textEdit, &QPlainTextEdit::textChanged, this, &FPwin::hlight);
-        connect(textEdit, &TextEdit::updateRect, this, &FPwin::hlight);
-        connect(textEdit, &TextEdit::resized, this, &FPwin::hlight);
+        connect(textEdit, &QPlainTextEdit::textChanged, this, &TexxyWindow::hlight);
+        connect(textEdit, &TextEdit::updateRect, this, &TexxyWindow::hlight);
+        connect(textEdit, &TextEdit::resized, this, &TexxyWindow::hlight);
         /* restore yellow highlights, which will automatically
            set the current line highlight if needed because the
            spin button and line number menuitem are set above */
@@ -4702,14 +4346,14 @@ void FPwin::dropTab(const QString& str, QObject* source) {
     }
     /* status bar */
     if (ui->statusBar->isVisible()) {
-        connect(textEdit, &QPlainTextEdit::blockCountChanged, this, &FPwin::statusMsgWithLineCount);
-        connect(textEdit, &TextEdit::selChanged, this, &FPwin::statusMsg);
+        connect(textEdit, &QPlainTextEdit::blockCountChanged, this, &TexxyWindow::statusMsgWithLineCount);
+        connect(textEdit, &TextEdit::selChanged, this, &TexxyWindow::statusMsg);
         if (ui->statusBar->findChild<QLabel*>("posLabel")) {
             showCursorPos();
-            connect(textEdit, &QPlainTextEdit::cursorPositionChanged, this, &FPwin::showCursorPos);
+            connect(textEdit, &QPlainTextEdit::cursorPositionChanged, this, &TexxyWindow::showCursorPos);
         }
         if (textEdit->getWordNumber() != -1)
-            connect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::updateWordInfo);
+            connect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::updateWordInfo);
     }
     if (ui->actionWrap->isChecked() && textEdit->lineWrapMode() == QPlainTextEdit::NoWrap)
         textEdit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
@@ -4724,12 +4368,12 @@ void FPwin::dropTab(const QString& str, QObject* source) {
     connect(textEdit->document(), &QTextDocument::undoAvailable, ui->actionUndo, &QAction::setEnabled);
     connect(textEdit->document(), &QTextDocument::redoAvailable, ui->actionRedo, &QAction::setEnabled);
     if (!config.getSaveUnmodified())
-        connect(textEdit->document(), &QTextDocument::modificationChanged, this, &FPwin::enableSaving);
-    connect(textEdit->document(), &QTextDocument::modificationChanged, this, &FPwin::asterisk);
+        connect(textEdit->document(), &QTextDocument::modificationChanged, this, &TexxyWindow::enableSaving);
+    connect(textEdit->document(), &QTextDocument::modificationChanged, this, &TexxyWindow::asterisk);
     connect(textEdit, &TextEdit::canCopy, ui->actionCopy, &QAction::setEnabled);
 
-    connect(tabPage, &TabPage::find, this, &FPwin::find);
-    connect(tabPage, &TabPage::searchFlagChanged, this, &FPwin::searchFlagChanged);
+    connect(tabPage, &TabPage::find, this, &TexxyWindow::find);
+    connect(tabPage, &TabPage::searchFlagChanged, this, &TexxyWindow::searchFlagChanged);
 
     if (!textEdit->isReadOnly()) {
         connect(textEdit, &TextEdit::canCopy, ui->actionCut, &QAction::setEnabled);
@@ -4738,10 +4382,10 @@ void FPwin::dropTab(const QString& str, QObject* source) {
         connect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionLowerCase, &QAction::setEnabled);
         connect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionStartCase, &QAction::setEnabled);
     }
-    connect(textEdit, &TextEdit::filePasted, this, &FPwin::newTabFromName);
-    connect(textEdit, &TextEdit::zoomedOut, this, &FPwin::reformat);
-    connect(textEdit, &TextEdit::hugeColumn, this, &FPwin::columnWarning);
-    connect(textEdit, &QWidget::customContextMenuRequested, this, &FPwin::editorContextMenu);
+    connect(textEdit, &TextEdit::filePasted, this, &TexxyWindow::newTabFromName);
+    connect(textEdit, &TextEdit::zoomedOut, this, &TexxyWindow::reformat);
+    connect(textEdit, &TextEdit::hugeColumn, this, &TexxyWindow::columnWarning);
+    connect(textEdit, &QWidget::customContextMenuRequested, this, &TexxyWindow::editorContextMenu);
 
     textEdit->setFocus();
 
@@ -4751,7 +4395,7 @@ void FPwin::dropTab(const QString& str, QObject* source) {
         QTimer::singleShot(0, dragSource, &QWidget::close);
 }
 /*************************/
-void FPwin::tabContextMenu(const QPoint& p) {
+void TexxyWindow::tabContextMenu(const QPoint& p) {
     auto mbt = qobject_cast<MenuBarTitle*>(QObject::sender());
     rightClicked_ = mbt == nullptr ? ui->tabWidget->tabBar()->tabAt(p) : ui->tabWidget->currentIndex();
     if (rightClicked_ < 0)
@@ -4826,9 +4470,9 @@ void FPwin::tabContextMenu(const QPoint& p) {
                 newTabFromName(finalTarget, 0, 0);
             });
         }
-        if (!static_cast<FPsingleton*>(qApp)->isRoot() && QFile::exists(fname)) {
+        if (!static_cast<TexxyApplication*>(qApp)->isRoot() && QFile::exists(fname)) {
             menu.addSeparator();
-            QAction* action = menu.addAction(static_cast<FPsingleton*>(qApp)->getConfig().getSysIcons()
+            QAction* action = menu.addAction(static_cast<TexxyApplication*>(qApp)->getConfig().getSysIcons()
                                                  ? QIcon::fromTheme("folder")
                                                  : symbolicIcon::icon(":icons/document-open.svg"),
                                              tr("Open Containing Folder"));
@@ -4864,7 +4508,7 @@ void FPwin::tabContextMenu(const QPoint& p) {
     rightClicked_ = -1;  // reset
 }
 /*************************/
-void FPwin::listContextMenu(const QPoint& p) {
+void TexxyWindow::listContextMenu(const QPoint& p) {
     if (!sidePane_ || sideItems_.isEmpty() || locked_)
         return;
 
@@ -4896,7 +4540,7 @@ void FPwin::listContextMenu(const QPoint& p) {
             menu.addAction(ui->actionCloseOther);
         }
         menu.addAction(ui->actionCloseAll);
-        if (!static_cast<FPsingleton*>(qApp)->isStandAlone()) {
+        if (!static_cast<TexxyApplication*>(qApp)->isStandAlone()) {
             menu.addSeparator();
             menu.addAction(ui->actionDetachTab);
         }
@@ -4946,9 +4590,9 @@ void FPwin::listContextMenu(const QPoint& p) {
                 newTabFromName(finalTarget, 0, 0);
             });
         }
-        if (!static_cast<FPsingleton*>(qApp)->isRoot() && QFile::exists(fname)) {
+        if (!static_cast<TexxyApplication*>(qApp)->isRoot() && QFile::exists(fname)) {
             menu.addSeparator();
-            QAction* action = menu.addAction(static_cast<FPsingleton*>(qApp)->getConfig().getSysIcons()
+            QAction* action = menu.addAction(static_cast<TexxyApplication*>(qApp)->getConfig().getSysIcons()
                                                  ? QIcon::fromTheme("folder")
                                                  : symbolicIcon::icon(":icons/document-open.svg"),
                                              tr("Open Containing Folder"));
@@ -4976,7 +4620,7 @@ void FPwin::listContextMenu(const QPoint& p) {
     rightClicked_ = -1;  // reset
 }
 /*************************/
-void FPwin::prefDialog() {
+void TexxyWindow::prefDialog() {
     if (isLoading())
         return;
     if (hasAnotherDialog())
@@ -5049,7 +4693,7 @@ static inline void selectWord(QTextCursor& cur) {
     }
 }
 
-void FPwin::checkSpelling() {
+void TexxyWindow::checkSpelling() {
     TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
     if (tabPage == nullptr)
         return;
@@ -5058,7 +4702,7 @@ void FPwin::checkSpelling() {
     if (hasAnotherDialog())
         return;
 
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
     auto dictPath = config.getDictPath();
     if (dictPath.isEmpty()) {
         showWarningBar("<center><b><big>" + tr("You need to add a Hunspell dictionary.") + "</big></b></center>" +
@@ -5244,8 +4888,8 @@ void FPwin::checkSpelling() {
     delete spellChecker;
 }
 /*************************/
-void FPwin::userDict() {
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+void TexxyWindow::userDict() {
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
     QString dictPath = config.getDictPath();
     if (dictPath.isEmpty())
         showWarningBar("<center><b><big>" + tr("The file does not exist.") + "</big></b></center>");
@@ -5258,12 +4902,12 @@ void FPwin::userDict() {
     }
 }
 /*************************/
-void FPwin::manageSessions() {
+void TexxyWindow::manageSessions() {
     if (!isReady())
         return;
 
     /* first see whether the Sessions dialog is already open... */
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     for (int i = 0; i < singleton->Wins.count(); ++i) {
         const auto dialogs = singleton->Wins.at(i)->findChildren<QDialog*>();
         for (const auto& dialog : dialogs) {
@@ -5284,7 +4928,7 @@ void FPwin::manageSessions() {
 }
 /*************************/
 // Pauses or resumes auto-saving.
-void FPwin::pauseAutoSaving(bool pause) {
+void TexxyWindow::pauseAutoSaving(bool pause) {
     if (!autoSaver_)
         return;
     if (pause) {
@@ -5304,11 +4948,11 @@ void FPwin::pauseAutoSaving(bool pause) {
     }
 }
 /*************************/
-void FPwin::startAutoSaving(bool start, int interval) {
+void TexxyWindow::startAutoSaving(bool start, int interval) {
     if (start) {
         if (!autoSaver_) {
             autoSaver_ = new QTimer(this);
-            connect(autoSaver_, &QTimer::timeout, this, &FPwin::autoSave);
+            connect(autoSaver_, &QTimer::timeout, this, &TexxyWindow::autoSave);
         }
         autoSaver_->setInterval(interval * 1000 * 60);
         autoSaver_->start();
@@ -5321,7 +4965,7 @@ void FPwin::startAutoSaving(bool start, int interval) {
     }
 }
 /*************************/
-void FPwin::autoSave() {
+void TexxyWindow::autoSave() {
     /* since there are important differences between this
        and saveFile(), we can't use the latter here.
        We especially don't show any prompt or warning here. */
@@ -5334,157 +4978,7 @@ void FPwin::autoSave() {
     });
 }
 /*************************/
-void FPwin::saveAllFiles(bool showWarning) {
-    const int currentIndex = ui->tabWidget->currentIndex();
-    if (currentIndex == -1)
-        return;
-
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
-    const bool removeTrailing = config.getRemoveTrailingSpaces();
-    const bool appendEmpty = config.getAppendEmptyLine();
-
-    bool error = false;
-    const int n = ui->tabWidget->count();
-
-    for (int i = 0; i < n; ++i) {
-        auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->widget(i));
-        TextEdit* te = tabPage->textEdit();
-        QTextDocument* doc = te->document();
-
-        if (te->isUneditable() || !doc->isModified())
-            continue;
-
-        const QString fname = te->getFileName();
-        if (fname.isEmpty() || !QFile::exists(fname))
-            continue;
-
-        // optional whitespace cleanup
-        if (removeTrailing && te->getProg() != QLatin1String("diff") &&
-            QFileInfo(fname).fileName() != QLatin1String("locale.gen")) {
-            makeBusy();
-            const QString prog = te->getProg();
-            const bool doubleSpace = (prog == QLatin1String("markdown") || prog == QLatin1String("fountain"));
-            const bool singleSpace = (prog == QLatin1String("LaTeX"));
-
-            QTextBlock block = doc->firstBlock();
-            QTextCursor cur(doc);
-            cur.beginEditBlock();
-            while (block.isValid()) {
-                const QString bt = block.text();
-                if (const int num = trailingSpaces(bt)) {
-                    cur.setPosition(block.position() + bt.size());
-                    if (doubleSpace) {
-                        if (num != 2)
-                            cur.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor,
-                                             std::max(1, num - 2));
-                    }
-                    else if (singleSpace) {
-                        if (num > 1)
-                            cur.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor, num - 1);
-                    }
-                    else {
-                        cur.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor, num);
-                    }
-                    cur.removeSelectedText();
-                }
-                block = block.next();
-            }
-            cur.endEditBlock();
-            unbusy();
-        }
-
-        // ensure file ends with a newline if requested
-        if (appendEmpty && !doc->lastBlock().text().isEmpty()) {
-            QTextCursor c(doc);
-            c.beginEditBlock();
-            c.movePosition(QTextCursor::End);
-            c.insertBlock();
-            c.endEditBlock();
-        }
-
-        QTextDocumentWriter writer(fname, "plaintext");
-        if (writer.write(doc)) {
-            inactiveTabModified_ = (i != currentIndex);
-            doc->setModified(false);
-
-            const QFileInfo fInfo(fname);
-            te->setSize(fInfo.size());
-            te->setLastModified(fInfo.lastModified());
-            setTitle(fname, inactiveTabModified_ ? i : -1);
-            addRecentFile(fname);  // saving also implies recently opened
-
-            // update syntax if language changed by saving
-            const QString prevLang = te->getProg();
-            setProgLang(te);
-            const QString newLang = te->getProg();
-
-            if (prevLang != newLang) {
-                if (config.getShowLangSelector() && config.getSyntaxByDefault()) {
-                    if (te->getLang() == newLang)
-                        te->setLang(QString());  // not enforced when it matches detected syntax
-                    if (!inactiveTabModified_)
-                        updateLangBtn(te);
-                }
-
-                if (!inactiveTabModified_ && ui->statusBar->isVisible() && te->getWordNumber() != -1)
-                    disconnect(doc, &QTextDocument::contentsChange, this, &FPwin::updateWordInfo);
-
-                if (te->getLang().isEmpty()) {  // restart highlighter only when not forced
-                    syntaxHighlighting(te, false);
-                    if (ui->actionSyntax->isChecked())
-                        syntaxHighlighting(te);
-                }
-
-                // update only the syntax segment of the status label
-                if (!inactiveTabModified_ && ui->statusBar->isVisible()) {
-                    QLabel* statusLabel = ui->statusBar->findChild<QLabel*>("statusLabel");
-                    QString str = statusLabel->text();
-                    const QString syntaxKey = tr("Syntax");
-                    int iSyntax = str.indexOf(syntaxKey);
-
-                    if (iSyntax == -1) {
-                        const QString linesTag = QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1").arg(tr("Lines"));
-                        const int j = str.indexOf(linesTag);
-                        const QString insert =
-                            QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1:</b> <i>%2</i>").arg(tr("Syntax"), newLang);
-                        if (j >= 0)
-                            str.insert(j, insert);
-                    }
-                    else {
-                        if (newLang == QLatin1String("url")) {
-                            const QString syntaxTag = QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1").arg(tr("Syntax"));
-                            const QString linesTag = QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1").arg(tr("Lines"));
-                            const int j = str.indexOf(syntaxTag);
-                            const int k = str.indexOf(linesTag);
-                            if (j >= 0 && k > j)
-                                str.remove(j, k - j);
-                        }
-                        else {
-                            const QString linesEnd = QStringLiteral("</i>&nbsp;&nbsp;&nbsp;<b>%1").arg(tr("Lines"));
-                            const int j = str.indexOf(linesEnd);
-                            const int offset = syntaxKey.size() + 9;  // size of ":</b> <i>"
-                            if (j > iSyntax + offset)
-                                str.replace(iSyntax + offset, j - iSyntax - offset, newLang);
-                        }
-                    }
-                    statusLabel->setText(str);
-                    if (te->getWordNumber() != -1)
-                        connect(doc, &QTextDocument::contentsChange, this, &FPwin::updateWordInfo);
-                }
-            }
-
-            inactiveTabModified_ = false;
-        }
-        else {
-            error = true;
-        }
-    }
-
-    if (showWarning && error)
-        showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>").arg(tr("Some files cannot be saved!")));
-}
-/*************************/
-void FPwin::aboutDialog() {
+void TexxyWindow::aboutDialog() {
     if (isLoading())
         return;
 
@@ -5524,7 +5018,7 @@ void FPwin::aboutDialog() {
     updateShortcuts(false);
 }
 /*************************/
-void FPwin::helpDoc() {
+void TexxyWindow::helpDoc() {
     int index = ui->tabWidget->currentIndex();
     if (index == -1)
         newTab();
@@ -5661,11 +5155,11 @@ void FPwin::helpDoc() {
     }
 }
 /*************************/
-void FPwin::stealFocus(QWidget* w) {
+void TexxyWindow::stealFocus(QWidget* w) {
     if (w->isMinimized())
         w->setWindowState((w->windowState() & ~Qt::WindowMinimized) | Qt::WindowActive);
 #ifdef HAS_X11
-    else if (static_cast<FPsingleton*>(qApp)->isX11()) {
+    else if (static_cast<TexxyApplication*>(qApp)->isX11()) {
         if (isWindowShaded(w->winId()))
             unshadeWindow(w->winId());
     }
@@ -5675,7 +5169,7 @@ void FPwin::stealFocus(QWidget* w) {
     /* WARNING: Under Wayland, this warning is shown by qtwayland -> qwaylandwindow.cpp
                 -> QWaylandWindow::requestActivateWindow():
                 "Wayland does not support QWindow::requestActivate()" */
-    if (!static_cast<FPsingleton*>(qApp)->isWayland()) {
+    if (!static_cast<TexxyApplication*>(qApp)->isWayland()) {
         w->activateWindow();
         QTimer::singleShot(0, w, [w]() {
             if (QWindow* win = w->windowHandle())
@@ -5689,7 +5183,7 @@ void FPwin::stealFocus(QWidget* w) {
     }
 }
 /*************************/
-void FPwin::stealFocus() {
+void TexxyWindow::stealFocus() {
     /* if there is a (sessions) dialog, let it keep the focus */
     const auto dialogs = findChildren<QDialog*>();
     if (!dialogs.isEmpty()) {

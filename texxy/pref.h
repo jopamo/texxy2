@@ -28,11 +28,11 @@
 
 namespace Texxy {
 
-class FPKeySequenceEdit : public QKeySequenceEdit {
+class TexxyKeySequenceEdit : public QKeySequenceEdit {
     Q_OBJECT
 
    public:
-    FPKeySequenceEdit(QWidget* parent = nullptr);
+    TexxyKeySequenceEdit(QWidget* parent = nullptr);
 
     /* to be used with Tab and Backtab */
     void pressKey(QKeyEvent* event) { QKeySequenceEdit::keyPressEvent(event); }

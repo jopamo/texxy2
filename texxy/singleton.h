@@ -21,17 +21,17 @@
 #define SINGLETON_H
 
 #include <QApplication>
-#include "fpwin.h"
+#include "texxywindow.h"
 #include "config.h"
 
 namespace Texxy {
 
 // A single-instance approach based on QSharedMemory.
-class FPsingleton : public QApplication {
+class TexxyApplication : public QApplication {
     Q_OBJECT
    public:
-    FPsingleton(int& argc, char** argv);
-    ~FPsingleton();
+    TexxyApplication(int& argc, char** argv);
+    ~TexxyApplication();
 
     void init(bool standalone);
 
@@ -42,10 +42,10 @@ class FPsingleton : public QApplication {
     void addRecentFile(const QString& file, bool recentOpened);
 
     void firstWin(const QStringList& info);
-    FPwin* newWin(const QStringList& filesList = QStringList(), int lineNum = 0, int posInLine = 0);
-    void removeWin(FPwin* win);
+    TexxyWindow* newWin(const QStringList& filesList = QStringList(), int lineNum = 0, int posInLine = 0);
+    void removeWin(TexxyWindow* win);
 
-    QList<FPwin*> Wins;  // All Texxy windows.
+    QList<TexxyWindow*> Wins;  // All Texxy windows.
 
     Config& getConfig() { return config_; }
 

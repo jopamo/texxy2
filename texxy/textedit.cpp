@@ -1,20 +1,5 @@
 /*
- * Copyright (C) Pedram Pourang (aka Tsu Jan) 2014-2025 <tsujan2000@gmail.com>
- *
- * Texxy is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Texxy is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
+
  */
 
 #include <QApplication>
@@ -1243,7 +1228,7 @@ void TextEdit::undo() {
     removeColumnHighlight();
     /* always remove replacing highlights before undoing */
     setGreenSel(QList<QTextEdit::ExtraSelection>());
-    if (getSearchedText().isEmpty())  // FPwin::hlight() won't be called
+    if (getSearchedText().isEmpty())  // TexxyWindow::hlight() won't be called
     {
         QList<QTextEdit::ExtraSelection> es;
         if (!currentLine_.cursor.isNull())
@@ -1994,7 +1979,7 @@ void TextEdit::onUpdateRequesting(const QRect& /*rect*/, int dy) {
        gives the whole rectangle when the text is scrolled */
     emit updateRect();
     /* because brackets may have been invisible before,
-       FPwin::matchBrackets() should be called here */
+       TexxyWindow::matchBrackets() should be called here */
     if (!matchedBrackets_ && isVisible())
         emit updateBracketMatching();
 }

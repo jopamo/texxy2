@@ -3,7 +3,7 @@
 */
 
 #include "singleton.h"
-#include "ui_fp.h"
+#include "ui_texxywindow.h"
 
 #include <QMimeDatabase>
 #include <QFileInfo>
@@ -295,7 +295,7 @@ static QString resolvedFilePath(const QString& filename) {
  decide the program language for a TextEdit by filename, extension, or mime
  falls back to "url"
 */
-void FPwin::setProgLang(TextEdit* textEdit) {
+void TexxyWindow::setProgLang(TextEdit* textEdit) {
     if (!textEdit)
         return;
 
@@ -343,7 +343,7 @@ void FPwin::setProgLang(TextEdit* textEdit) {
 /*
  toggle syntax highlighting across tabs and keep UI responsive
 */
-void FPwin::toggleSyntaxHighlighting() {
+void TexxyWindow::toggleSyntaxHighlighting() {
     const int count = ui->tabWidget->count();
     if (count == 0)
         return;
@@ -363,13 +363,13 @@ void FPwin::toggleSyntaxHighlighting() {
         updateLangBtn(tabPage->textEdit());
 
     if (enableSH)
-        QTimer::singleShot(0, this, &FPwin::unbusy);
+        QTimer::singleShot(0, this, &TexxyWindow::unbusy);
 }
 
 /*
  apply or remove syntax highlighting for one editor
 */
-void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString& lang) {
+void TexxyWindow::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString& lang) {
     if (!textEdit || textEdit->isUneditable())
         return;
 
@@ -379,7 +379,7 @@ void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString
         if (progLan.isEmpty() || progLan == "help")
             return;
 
-        Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+        Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
         const qint64 textSize = textEdit->getSize();
         const qint64 maxSize = config.getMaxSHSize() * 1024LL * 1024LL;
         if (textSize > maxSize) {
@@ -418,20 +418,20 @@ void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString
                 formatTextRect();
                 matchBrackets();
             }
-            connect(textEdit, &TextEdit::updateBracketMatching, this, &FPwin::matchBrackets);
-            connect(textEdit, &QPlainTextEdit::blockCountChanged, this, &FPwin::formatOnBlockChange);
-            connect(textEdit, &TextEdit::updateRect, this, &FPwin::formatTextRect);
-            connect(textEdit, &TextEdit::resized, this, &FPwin::formatTextRect);
-            connect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::formatOnTextChange);
+            connect(textEdit, &TextEdit::updateBracketMatching, this, &TexxyWindow::matchBrackets);
+            connect(textEdit, &QPlainTextEdit::blockCountChanged, this, &TexxyWindow::formatOnBlockChange);
+            connect(textEdit, &TextEdit::updateRect, this, &TexxyWindow::formatTextRect);
+            connect(textEdit, &TextEdit::resized, this, &TexxyWindow::formatTextRect);
+            connect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::formatOnTextChange);
         });
     }
     else {
         if (auto* highlighter = qobject_cast<Highlighter*>(textEdit->getHighlighter())) {
-            disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &FPwin::formatOnTextChange);
-            disconnect(textEdit, &TextEdit::resized, this, &FPwin::formatTextRect);
-            disconnect(textEdit, &TextEdit::updateRect, this, &FPwin::formatTextRect);
-            disconnect(textEdit, &QPlainTextEdit::blockCountChanged, this, &FPwin::formatOnBlockChange);
-            disconnect(textEdit, &TextEdit::updateBracketMatching, this, &FPwin::matchBrackets);
+            disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::formatOnTextChange);
+            disconnect(textEdit, &TextEdit::resized, this, &TexxyWindow::formatTextRect);
+            disconnect(textEdit, &TextEdit::updateRect, this, &TexxyWindow::formatTextRect);
+            disconnect(textEdit, &QPlainTextEdit::blockCountChanged, this, &TexxyWindow::formatOnBlockChange);
+            disconnect(textEdit, &TextEdit::updateBracketMatching, this, &TexxyWindow::matchBrackets);
 
             QList<QTextEdit::ExtraSelection> es = textEdit->extraSelections();
             int n = textEdit->getRedSel().count();
@@ -453,22 +453,22 @@ void FPwin::syntaxHighlighting(TextEdit* textEdit, bool highlight, const QString
 /*
  defer rectangle update slightly on text changes to keep UI smooth
 */
-void FPwin::formatOnTextChange(int /*position*/, int charsRemoved, int charsAdded) const {
+void TexxyWindow::formatOnTextChange(int /*position*/, int charsRemoved, int charsAdded) const {
     if (charsRemoved > 0 || charsAdded > 0)
-        QTimer::singleShot(0, this, &FPwin::formatTextRect);
+        QTimer::singleShot(0, this, &TexxyWindow::formatTextRect);
 }
 
 /*
  block count changes require an immediate limit update
 */
-void FPwin::formatOnBlockChange(int /* newBlockCount */) const {
+void TexxyWindow::formatOnBlockChange(int /* newBlockCount */) const {
     formatTextRect();
 }
 
 /*
  limit highlighter work to the visible area and rehighlight pending blocks
 */
-void FPwin::formatTextRect() const {
+void TexxyWindow::formatTextRect() const {
     if (auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
         TextEdit* textEdit = tabPage->textEdit();
         if (auto* highlighter = qobject_cast<Highlighter*>(textEdit->getHighlighter())) {

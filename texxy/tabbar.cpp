@@ -15,7 +15,7 @@
 namespace Texxy {
 
 static constexpr const char* kTabDroppedProp =
-    "_fpad_tab_dropped";  // property set by FPwin::dropEvent when a tab drop is accepted
+    "_texxy_tab_dropped";  // property set by TexxyWindow::dropEvent when a tab drop is accepted
 static constexpr const char* kMimeType = "application/texxy-tab";  // mime type for dragged tab index
 
 const char* TabBar::tabDropped = kTabDroppedProp;

@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
     const QString name = "Texxy";
     const QString version = "0.9.1";
 
-    Texxy::FPsingleton singleton(argc, argv);
+    Texxy::TexxyApplication singleton(argc, argv);
     singleton.setApplicationName(name);
     singleton.setApplicationVersion(version);
 
@@ -30,8 +30,7 @@ int main(int argc, char** argv) {
     if (firstArg == "--help" || firstArg == "-h") {
         QTextStream out(stdout);
         out << "Texxy - Lightweight Qt text editor\n"
-               "Usage:\n	texxy [option(s)] [file1 file2 ...]\n"
-               "Or:\n	fpad [option(s)] [file1 file2 ...]\n\n"
+               "Usage:\n	texxy [option(s)] [file1 file2 ...]\n\n"
                "Options:\n\n"
                "--help or -h        Show this help and exit.\n"
                "--version or -v     Show version information and exit.\n"
@@ -78,9 +77,9 @@ int main(int argc, char** argv) {
     // Handle SIGQUIT, SIGINT, SIGTERM and SIGHUP -> https://en.wikipedia.org/wiki/Unix_signal
     Texxy::signalDaemon D;
     D.watchUnixSignals();
-    QObject::connect(&D, &Texxy::signalDaemon::sigQUIT, &singleton, &Texxy::FPsingleton::quitSignalReceived);
+    QObject::connect(&D, &Texxy::signalDaemon::sigQUIT, &singleton, &Texxy::TexxyApplication::quitSignalReceived);
 
-    QObject::connect(&singleton, &QCoreApplication::aboutToQuit, &singleton, &Texxy::FPsingleton::quitting);
+    QObject::connect(&singleton, &QCoreApplication::aboutToQuit, &singleton, &Texxy::TexxyApplication::quitting);
     singleton.firstWin(info);
 
     return singleton.exec();

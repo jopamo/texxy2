@@ -3,7 +3,7 @@
 */
 
 #include "singleton.h"
-#include "ui_fp.h"
+#include "ui_texxywindow.h"
 
 #include "session.h"
 #include "ui_sessionDialog.h"
@@ -33,7 +33,7 @@ SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::Sess
 
     // populate existing session names
     {
-        QSettings settings("texxy", "fp");
+        QSettings settings("texxy", "texxy");
         settings.beginGroup("sessions");
         allItems_ = settings.allKeys();
         settings.endGroup();
@@ -137,7 +137,7 @@ void SessionDialog::saveSession() {
         return;
 
     // check quickly whether there is at least one tab with a file
-    auto hasAnyFileInWin = [](FPwin* win) -> bool {
+    auto hasAnyFileInWin = [](TexxyWindow* win) -> bool {
         const int n = win->ui->tabWidget->count();
         for (int i = 0; i < n; ++i) {
             auto* page = qobject_cast<TabPage*>(win->ui->tabWidget->widget(i));
@@ -149,11 +149,11 @@ void SessionDialog::saveSession() {
 
     bool hasFile = false;
     if (ui->windowBox->isChecked()) {
-        if (auto* win = static_cast<FPwin*>(parent_))
+        if (auto* win = static_cast<TexxyWindow*>(parent_))
             hasFile = hasAnyFileInWin(win);
     }
     else {
-        auto* singleton = static_cast<FPsingleton*>(qApp);
+        auto* singleton = static_cast<TexxyApplication*>(qApp);
         for (int i = 0; i < singleton->Wins.count() && !hasFile; ++i)
             hasFile = hasAnyFileInWin(singleton->Wins.at(i));
     }
@@ -184,7 +184,7 @@ void SessionDialog::reallySaveSession() {
     QStringList files;
     files.reserve(16);  // heuristic to reduce reallocs
 
-    auto collectFilesFromWin = [&](FPwin* win) {
+    auto collectFilesFromWin = [&](TexxyWindow* win) {
         const int n = win->ui->tabWidget->count();
         for (int i = 0; i < n; ++i) {
             auto* page = qobject_cast<TabPage*>(win->ui->tabWidget->widget(i));
@@ -200,11 +200,11 @@ void SessionDialog::reallySaveSession() {
     };
 
     if (ui->windowBox->isChecked()) {
-        if (auto* win = static_cast<FPwin*>(parent_))
+        if (auto* win = static_cast<TexxyWindow*>(parent_))
             collectFilesFromWin(win);
     }
     else {
-        auto* singleton = static_cast<FPsingleton*>(qApp);
+        auto* singleton = static_cast<TexxyApplication*>(qApp);
         for (int i = 0; i < singleton->Wins.count(); ++i)
             collectFilesFromWin(singleton->Wins.at(i));
     }
@@ -224,7 +224,7 @@ void SessionDialog::reallySaveSession() {
 
     onEmptinessChanged(false);
 
-    QSettings settings("texxy", "fp");
+    QSettings settings("texxy", "texxy");
     settings.beginGroup("sessions");
     settings.setValue(name, files);
     settings.endGroup();
@@ -240,7 +240,7 @@ void SessionDialog::openSessions() {
     files.reserve(count * 4);  // rough guess to minimize reallocs
 
     {
-        QSettings settings("texxy", "fp");
+        QSettings settings("texxy", "texxy");
         settings.beginGroup("sessions");
         for (int i = 0; i < count; ++i)
             files += settings.value(items.at(i)->text()).toStringList();
@@ -250,8 +250,8 @@ void SessionDialog::openSessions() {
     if (files.isEmpty())
         return;
 
-    if (auto* win = static_cast<FPwin*>(parent_)) {
-        Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    if (auto* win = static_cast<TexxyWindow*>(parent_)) {
+        Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
 
         int broken = 0;
         const bool multiple = (files.count() > 1) || win->isLoading();
@@ -349,9 +349,9 @@ void SessionDialog::removeSelected() {
     if (count == 0)
         return;
 
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
 
-    QSettings settings("texxy", "fp");
+    QSettings settings("texxy", "texxy");
     settings.beginGroup("sessions");
 
     for (int i = 0; i < count; ++i) {
@@ -370,7 +370,7 @@ void SessionDialog::removeSelected() {
     settings.endGroup();
 
     if (config.savedCursorPos().isEmpty()) {
-        Settings curSettings("texxy", "fp_cursor_pos");
+        Settings curSettings("texxy", "texxy_cursor_pos");
         curSettings.remove("cursorPositions");
     }
 
@@ -380,17 +380,17 @@ void SessionDialog::removeSelected() {
 
 void SessionDialog::removeAll() {
     // drop all cursor positions first
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.removeAllCursorPos();
     {
-        Settings curSettings("texxy", "fp_cursor_pos");
+        Settings curSettings("texxy", "texxy_cursor_pos");
         curSettings.remove("cursorPositions");
     }
 
     ui->listWidget->clear();
     onEmptinessChanged(true);
 
-    QSettings settings("texxy", "fp");
+    QSettings settings("texxy", "texxy");
     settings.beginGroup("sessions");
     settings.remove("");  // remove the whole group
     settings.endGroup();
@@ -443,7 +443,7 @@ void SessionDialog::reallyRenameSession() {
         return;
     }
 
-    QSettings settings("texxy", "fp");
+    QSettings settings("texxy", "texxy");
     settings.beginGroup("sessions");
 
     const QStringList files = settings.value(rename_.oldName).toStringList();

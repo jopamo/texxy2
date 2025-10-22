@@ -2,8 +2,8 @@
  * texxy/brackets.cpp
  */
 
-#include "fpwin.h"
-#include "ui_fp.h"
+#include "texxywindow.h"
+#include "ui_texxywindow.h"
 #include <algorithm>  // std::min, std::max
 
 namespace Texxy {
@@ -93,7 +93,7 @@ static inline bool matchBackwardGeneric(QTextBlock block,
     return false;
 }
 
-void FPwin::matchBrackets() {
+void TexxyWindow::matchBrackets() {
     TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
     if (!tabPage)
         return;
@@ -247,43 +247,43 @@ void FPwin::matchBrackets() {
  the generic helpers above consolidate the core scanning logic
 *******************************************************************************/
 
-bool FPwin::matchLeftParenthesis(QTextBlock currentBlock, int i, int numLeftParentheses) {
+bool TexxyWindow::matchLeftParenthesis(QTextBlock currentBlock, int i, int numLeftParentheses) {
     return matchForwardGeneric<ParenthesisInfo>(
         currentBlock, i, numLeftParentheses, '(', ')', [](TextBlockData* d) { return d->parentheses(); },
         [this](int pos) { createSelection(pos); });
 }
 
-bool FPwin::matchRightParenthesis(QTextBlock currentBlock, int i, int numRightParentheses) {
+bool TexxyWindow::matchRightParenthesis(QTextBlock currentBlock, int i, int numRightParentheses) {
     return matchBackwardGeneric<ParenthesisInfo>(
         currentBlock, i, numRightParentheses, '(', ')', [](TextBlockData* d) { return d->parentheses(); },
         [this](int pos) { createSelection(pos); });
 }
 
-bool FPwin::matchLeftBrace(QTextBlock currentBlock, int i, int numRightBraces) {
+bool TexxyWindow::matchLeftBrace(QTextBlock currentBlock, int i, int numRightBraces) {
     return matchForwardGeneric<BraceInfo>(
         currentBlock, i, numRightBraces, '{', '}', [](TextBlockData* d) { return d->braces(); },
         [this](int pos) { createSelection(pos); });
 }
 
-bool FPwin::matchRightBrace(QTextBlock currentBlock, int i, int numLeftBraces) {
+bool TexxyWindow::matchRightBrace(QTextBlock currentBlock, int i, int numLeftBraces) {
     return matchBackwardGeneric<BraceInfo>(
         currentBlock, i, numLeftBraces, '{', '}', [](TextBlockData* d) { return d->braces(); },
         [this](int pos) { createSelection(pos); });
 }
 
-bool FPwin::matchLeftBracket(QTextBlock currentBlock, int i, int numRightBrackets) {
+bool TexxyWindow::matchLeftBracket(QTextBlock currentBlock, int i, int numRightBrackets) {
     return matchForwardGeneric<BracketInfo>(
         currentBlock, i, numRightBrackets, '[', ']', [](TextBlockData* d) { return d->brackets(); },
         [this](int pos) { createSelection(pos); });
 }
 
-bool FPwin::matchRightBracket(QTextBlock currentBlock, int i, int numLeftBrackets) {
+bool TexxyWindow::matchRightBracket(QTextBlock currentBlock, int i, int numLeftBrackets) {
     return matchBackwardGeneric<BracketInfo>(
         currentBlock, i, numLeftBrackets, '[', ']', [](TextBlockData* d) { return d->brackets(); },
         [this](int pos) { createSelection(pos); });
 }
 
-void FPwin::createSelection(int pos) {
+void TexxyWindow::createSelection(int pos) {
     TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
     if (!tabPage)
         return;

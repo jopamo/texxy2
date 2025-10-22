@@ -18,7 +18,7 @@
  */
 
 #include "singleton.h"
-#include "ui_fp.h"
+#include "ui_texxywindow.h"
 
 #include "pref.h"
 #include "ui_prefDialog.h"
@@ -45,9 +45,9 @@ namespace Texxy {
 static QHash<QString, QString> OBJECT_NAMES;
 static QHash<QString, QString> DEFAULT_SHORTCUTS;
 /*************************/
-FPKeySequenceEdit::FPKeySequenceEdit(QWidget* parent) : QKeySequenceEdit(parent) {}
+TexxyKeySequenceEdit::TexxyKeySequenceEdit(QWidget* parent) : QKeySequenceEdit(parent) {}
 
-void FPKeySequenceEdit::keyPressEvent(
+void TexxyKeySequenceEdit::keyPressEvent(
     QKeyEvent* event) {  // also a workaround for a Qt bug that makes Meta a non-modifier
     clear();             // no multiple shortcuts
     int k = event->key();
@@ -67,11 +67,11 @@ Delegate::Delegate(QObject* parent) : QStyledItemDelegate(parent) {}
 QWidget* Delegate::createEditor(QWidget* parent,
                                 const QStyleOptionViewItem& /*option*/,
                                 const QModelIndex& /*index*/) const {
-    return new FPKeySequenceEdit(parent);
+    return new TexxyKeySequenceEdit(parent);
 }
 /*************************/
 bool Delegate::eventFilter(QObject* object, QEvent* event) {
-    FPKeySequenceEdit* editor = qobject_cast<FPKeySequenceEdit*>(object);
+    TexxyKeySequenceEdit* editor = qobject_cast<TexxyKeySequenceEdit*>(object);
     if (editor && event->type() == QEvent::KeyPress) {
         QKeyEvent* ke = static_cast<QKeyEvent*>(event);
         int k = ke->key();
@@ -111,7 +111,7 @@ PrefDialog::PrefDialog(QWidget* parent) : QDialog(parent), ui(new Ui::PrefDialog
     ui->syntaxTableWidget->sortByColumn(0, Qt::AscendingOrder);
     ui->syntaxTableWidget->setToolTip(tr("Double click a color to change it."));
 
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
     darkBg_ = config.getDarkColScheme();
     darkColValue_ = config.getDarkBgColorValue();
     lightColValue_ = config.getLightBgColorValue();
@@ -204,7 +204,7 @@ PrefDialog::PrefDialog(QWidget* parent) : QDialog(parent), ui(new Ui::PrefDialog
     connect(ui->singleTabBox, &CHECKBOX_CHANGED, this, &PrefDialog::prefHideSingleTab);
 
     ui->windowBox->setChecked(config.getOpenInWindows());
-    ui->windowBox->setEnabled(!static_cast<FPsingleton*>(qApp)->isStandAlone());
+    ui->windowBox->setEnabled(!static_cast<TexxyApplication*>(qApp)->isStandAlone());
     connect(ui->windowBox, &CHECKBOX_CHANGED, this, &PrefDialog::prefOpenInWindows);
 
     ui->nativeDialogBox->setChecked(config.getNativeDialog());
@@ -369,7 +369,7 @@ PrefDialog::PrefDialog(QWidget* parent) : QDialog(parent), ui(new Ui::PrefDialog
      *** Shortcuts ***
      *****************/
 
-    if (FPwin* win = static_cast<FPwin*>(parent_)) {
+    if (TexxyWindow* win = static_cast<TexxyWindow*>(parent_)) {
         if (DEFAULT_SHORTCUTS.isEmpty()) {  // NOTE: Shortcut strings should be in the PortableText format.
             const auto defaultShortcuts = win->defaultShortcuts();
             QHash<QAction*, QKeySequence>::const_iterator iter = defaultShortcuts.constBegin();
@@ -575,13 +575,13 @@ void PrefDialog::onClosing() {
     prefSelHighlight();
     prefPastePaths();
 
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.setPrefSize(size());
     config.writeConfig();
 }
 /*************************/
 void PrefDialog::showPrompt(const QString& str, bool temporary) {
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (!str.isEmpty()) {  // show the provided message
         ui->promptLabel->setText("<b>" + str + "</b>");
         if (temporary)  // show it temporarily
@@ -655,10 +655,10 @@ bool PrefDialog::eventFilter(QObject* object, QEvent* event) {
 }
 /*************************/
 void PrefDialog::prefSize(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked) {
         config.setRemSize(true);
-        if (FPwin* win = static_cast<FPwin*>(parent_)) {
+        if (TexxyWindow* win = static_cast<TexxyWindow*>(parent_)) {
             config.setWinSize(win->size());
             config.setIsMaxed(win->isMaximized());
             config.setIsFull(win->isFullScreen());
@@ -678,10 +678,10 @@ void PrefDialog::prefSize(int checked) {
 }
 /*************************/
 void PrefDialog::prefPos(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked) {
         config.setRemPos(true);
-        if (FPwin* win = static_cast<FPwin*>(parent_))
+        if (TexxyWindow* win = static_cast<TexxyWindow*>(parent_))
             config.setWinPos(win->geometry().topLeft());
     }
     else if (checked == Qt::Unchecked)
@@ -689,7 +689,7 @@ void PrefDialog::prefPos(int checked) {
 }
 /*************************/
 void PrefDialog::prefToolbar(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         if (ui->menubarBox->checkState() == Qt::Checked)
@@ -706,7 +706,7 @@ void PrefDialog::prefToolbar(int checked) {
 }
 /*************************/
 void PrefDialog::prefMenubar(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         if (ui->toolbarBox->checkState() == Qt::Checked)
@@ -730,7 +730,7 @@ void PrefDialog::prefMenubar(int checked) {
 }
 /*************************/
 void PrefDialog::prefMenubarTitle(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         config.setMenubarTitle(true);
@@ -749,7 +749,7 @@ void PrefDialog::prefMenubarTitle(int checked) {
 }
 /*************************/
 void PrefDialog::prefSearchbar(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setHideSearchbar(true);
     else if (checked == Qt::Unchecked)
@@ -757,7 +757,7 @@ void PrefDialog::prefSearchbar(int checked) {
 }
 /*************************/
 void PrefDialog::prefSearchHistory(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setSharedSearchHistory(true);
     else if (checked == Qt::Unchecked)
@@ -767,13 +767,13 @@ void PrefDialog::prefSearchHistory(int checked) {
 }
 /*************************/
 void PrefDialog::prefStatusbar(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     bool showCurPos = config.getShowCursorPos();
     if (checked == Qt::Checked) {
         config.setShowStatusbar(true);
         for (int i = 0; i < singleton->Wins.count(); ++i) {
-            FPwin* win = singleton->Wins.at(i);
+            TexxyWindow* win = singleton->Wins.at(i);
 
             if (!win->ui->statusBar->isVisible()) {
                 /* here we can't use docProp() directly
@@ -783,10 +783,10 @@ void PrefDialog::prefStatusbar(int checked) {
                     win->statusMsgWithLineCount(textEdit->document()->blockCount());
                     for (int j = 0; j < win->ui->tabWidget->count(); ++j) {
                         TextEdit* thisTextEdit = qobject_cast<TabPage*>(win->ui->tabWidget->widget(j))->textEdit();
-                        connect(thisTextEdit, &QPlainTextEdit::blockCountChanged, win, &FPwin::statusMsgWithLineCount);
-                        connect(thisTextEdit, &TextEdit::selChanged, win, &FPwin::statusMsg);
+                        connect(thisTextEdit, &QPlainTextEdit::blockCountChanged, win, &TexxyWindow::statusMsgWithLineCount);
+                        connect(thisTextEdit, &TextEdit::selChanged, win, &TexxyWindow::statusMsg);
                         if (showCurPos)
-                            connect(thisTextEdit, &QPlainTextEdit::cursorPositionChanged, win, &FPwin::showCursorPos);
+                            connect(thisTextEdit, &QPlainTextEdit::cursorPositionChanged, win, &TexxyWindow::showCursorPos);
                     }
                     win->ui->statusBar->setVisible(true);
                     if (showCurPos) {
@@ -814,19 +814,19 @@ void PrefDialog::prefStatusbar(int checked) {
 }
 /*************************/
 void PrefDialog::prefStatusCursor(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         config.setShowCursorPos(true);
         for (int i = 0; i < singleton->Wins.count(); ++i) {
-            FPwin* win = singleton->Wins.at(i);
+            TexxyWindow* win = singleton->Wins.at(i);
             int count = win->ui->tabWidget->count();
             if (count > 0 && win->ui->statusBar->isVisible()) {
                 win->addCursorPosLabel();
                 win->showCursorPos();
                 for (int j = 0; j < count; ++j) {
                     TextEdit* textEdit = qobject_cast<TabPage*>(win->ui->tabWidget->widget(j))->textEdit();
-                    connect(textEdit, &QPlainTextEdit::cursorPositionChanged, win, &FPwin::showCursorPos);
+                    connect(textEdit, &QPlainTextEdit::cursorPositionChanged, win, &TexxyWindow::showCursorPos);
                 }
             }
         }
@@ -834,13 +834,13 @@ void PrefDialog::prefStatusCursor(int checked) {
     else if (checked == Qt::Unchecked) {
         config.setShowCursorPos(false);
         for (int i = 0; i < singleton->Wins.count(); ++i) {
-            FPwin* win = singleton->Wins.at(i);
+            TexxyWindow* win = singleton->Wins.at(i);
             if (QLabel* posLabel = win->ui->statusBar->findChild<QLabel*>("posLabel")) {
                 int count = win->ui->tabWidget->count();
                 if (count > 0 && win->ui->statusBar->isVisible()) {
                     for (int j = 0; j < count; ++j) {
                         TextEdit* textEdit = qobject_cast<TabPage*>(win->ui->tabWidget->widget(j))->textEdit();
-                        disconnect(textEdit, &QPlainTextEdit::cursorPositionChanged, win, &FPwin::showCursorPos);
+                        disconnect(textEdit, &QPlainTextEdit::cursorPositionChanged, win, &TexxyWindow::showCursorPos);
                     }
                 }
                 posLabel->deleteLater();
@@ -851,7 +851,7 @@ void PrefDialog::prefStatusCursor(int checked) {
 /*************************/
 void PrefDialog::prefTabPosition() {
     int index = ui->tabCombo->currentIndex();
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     config.setTabPosition(index);
     if (singleton->Wins.at(0)->ui->tabWidget->tabPosition() != static_cast<QTabWidget::TabPosition>(index)) {
@@ -861,11 +861,11 @@ void PrefDialog::prefTabPosition() {
 }
 /*************************/
 void PrefDialog::prefFont(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked) {
         config.setRemFont(true);
         // get the document font of the current window
-        if (FPwin* win = static_cast<FPwin*>(parent_)) {
+        if (TexxyWindow* win = static_cast<TexxyWindow*>(parent_)) {
             if (TabPage* tabPage = qobject_cast<TabPage*>(win->ui->tabWidget->currentWidget()))
                 config.setFont(tabPage->textEdit()->getDefaultFont());
         }
@@ -878,7 +878,7 @@ void PrefDialog::prefFont(int checked) {
 }
 /*************************/
 void PrefDialog::prefWrap(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setWrapByDefault(true);
     else if (checked == Qt::Unchecked)
@@ -886,7 +886,7 @@ void PrefDialog::prefWrap(int checked) {
 }
 /*************************/
 void PrefDialog::prefIndent(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setIndentByDefault(true);
     else if (checked == Qt::Unchecked)
@@ -894,7 +894,7 @@ void PrefDialog::prefIndent(int checked) {
 }
 /*************************/
 void PrefDialog::prefAutoBracket(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         if (!config.getAutoBracket()) {
@@ -925,7 +925,7 @@ void PrefDialog::prefAutoBracket(int checked) {
 }
 /*************************/
 void PrefDialog::prefAutoReplace(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         if (!config.getAutoReplace()) {
@@ -956,12 +956,12 @@ void PrefDialog::prefAutoReplace(int checked) {
 }
 /*************************/
 void PrefDialog::prefLine(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         config.setLineByDefault(true);
         for (int i = 0; i < singleton->Wins.count(); ++i) {
-            FPwin* thisWin = singleton->Wins.at(i);
+            TexxyWindow* thisWin = singleton->Wins.at(i);
             thisWin->ui->actionLineNumbers->setChecked(true);
             thisWin->ui->actionLineNumbers->setDisabled(true);
         }
@@ -982,7 +982,7 @@ void PrefDialog::prefSyntax(int checked) {
 }
 /*************************/
 void PrefDialog::prefApplySyntax() {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
 
     bool langBtnExists(config.getShowLangSelector() && config.getSyntaxByDefault());
@@ -999,7 +999,7 @@ void PrefDialog::prefApplySyntax() {
 }
 /*************************/
 void PrefDialog::prefApplyDateFormat() {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     QString format = ui->dateEdit->text();
     /* if "\n" is typed in the line-edit, interpret
@@ -1016,7 +1016,7 @@ void PrefDialog::prefApplyDateFormat() {
 }
 /*************************/
 void PrefDialog::prefWhiteSpace(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setShowWhiteSpace(true);
     else if (checked == Qt::Unchecked)
@@ -1026,7 +1026,7 @@ void PrefDialog::prefWhiteSpace(int checked) {
 }
 /*************************/
 void PrefDialog::prefVLine(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     int dsitance = std::clamp(ui->vLineSpin->value(), 10, 999);
     if (checked == Qt::Checked) {
         config.setVLineDistance(dsitance);
@@ -1041,7 +1041,7 @@ void PrefDialog::prefVLine(int checked) {
 }
 /*************************/
 void PrefDialog::prefVLineDistance(int value) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     int dsitance = std::clamp(value, 10, 999);
     config.setVLineDistance(dsitance);
 
@@ -1049,7 +1049,7 @@ void PrefDialog::prefVLineDistance(int value) {
 }
 /*************************/
 void PrefDialog::prefEndings(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setShowEndings(true);
     else if (checked == Qt::Unchecked)
@@ -1059,7 +1059,7 @@ void PrefDialog::prefEndings(int checked) {
 }
 /*************************/
 void PrefDialog::prefTextMargin(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setTextMargin(true);
     else if (checked == Qt::Unchecked)
@@ -1069,7 +1069,7 @@ void PrefDialog::prefTextMargin(int checked) {
 }
 /*************************/
 void PrefDialog::prefDarkColScheme(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
 
     prefCustomSyntaxColors_.clear();  // forget customized syntax colors
 
@@ -1147,7 +1147,7 @@ void PrefDialog::prefDarkColScheme(int checked) {
 }
 /*************************/
 void PrefDialog::prefColValue(int value) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (!ui->colBox->isChecked())
         config.setLightBgColorValue(value);
     else
@@ -1157,7 +1157,7 @@ void PrefDialog::prefColValue(int value) {
 }
 /*************************/
 void PrefDialog::prefThickCursor() {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     bool thick(ui->thickCursorBox->isChecked());
     config.setThickCursor(thick);
@@ -1176,7 +1176,7 @@ void PrefDialog::prefSelHighlight() {
     bool selHighlighting = ui->selHighlightBox->isChecked();
     if (selHighlighting == selHighlighting_)
         return;
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     config.setSelectionHighlighting(selHighlighting);
     for (int i = 0; i < singleton->Wins.count(); ++i) {
@@ -1193,7 +1193,7 @@ void PrefDialog::prefPastePaths() {
     bool pastePaths = ui->pastePathsBox->isChecked();
     if (pastePaths == pastePaths_)
         return;
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     config.setPastePaths(pastePaths);
     for (int i = 0; i < singleton->Wins.count(); ++i) {
@@ -1207,7 +1207,7 @@ void PrefDialog::prefPastePaths() {
 }
 /*************************/
 void PrefDialog::prefAppendEmptyLine(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked)
         config.setAppendEmptyLine(true);
@@ -1216,7 +1216,7 @@ void PrefDialog::prefAppendEmptyLine(int checked) {
 }
 /*************************/
 void PrefDialog::prefRemoveTrailingSpaces(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked)
         config.setRemoveTrailingSpaces(true);
@@ -1225,7 +1225,7 @@ void PrefDialog::prefRemoveTrailingSpaces(int checked) {
 }
 /*************************/
 void PrefDialog::prefSkipNontext(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setSkipNonText(true);
     else if (checked == Qt::Unchecked)
@@ -1233,7 +1233,7 @@ void PrefDialog::prefSkipNontext(int checked) {
 }
 /*************************/
 void PrefDialog::prefTabWrapAround(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setTabWrapAround(true);
     else if (checked == Qt::Unchecked)
@@ -1241,12 +1241,12 @@ void PrefDialog::prefTabWrapAround(int checked) {
 }
 /*************************/
 void PrefDialog::prefHideSingleTab(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         config.setHideSingleTab(true);
         for (int i = 0; i < singleton->Wins.count(); ++i) {
-            FPwin* win = singleton->Wins.at(i);
+            TexxyWindow* win = singleton->Wins.at(i);
             TabBar* tabBar = win->ui->tabWidget->tabBar();
             if (!win->hasSidePane())
                 tabBar->hideSingle(true);
@@ -1257,7 +1257,7 @@ void PrefDialog::prefHideSingleTab(int checked) {
     else if (checked == Qt::Unchecked) {
         config.setHideSingleTab(false);
         for (int i = 0; i < singleton->Wins.count(); ++i) {
-            FPwin* win = singleton->Wins.at(i);
+            TexxyWindow* win = singleton->Wins.at(i);
             TabBar* tabBar = win->ui->tabWidget->tabBar();
             tabBar->hideSingle(false);
             if (!win->hasSidePane() && win->ui->tabWidget->count() == 1)
@@ -1267,17 +1267,17 @@ void PrefDialog::prefHideSingleTab(int checked) {
 }
 /*************************/
 void PrefDialog::prefMaxSHSize(int value) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.setMaxSHSize(value);
 }
 /*************************/
 void PrefDialog::prefInertialScrolling(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         config.setInertialScrolling(true);
         for (int i = 0; i < singleton->Wins.count(); ++i) {
-            FPwin* win = singleton->Wins.at(i);
+            TexxyWindow* win = singleton->Wins.at(i);
             for (int j = 0; j < win->ui->tabWidget->count(); ++j)
                 qobject_cast<TabPage*>(win->ui->tabWidget->widget(j))->textEdit()->setInertialScrolling(true);
         }
@@ -1285,7 +1285,7 @@ void PrefDialog::prefInertialScrolling(int checked) {
     else if (checked == Qt::Unchecked) {
         config.setInertialScrolling(false);
         for (int i = 0; i < singleton->Wins.count(); ++i) {
-            FPwin* win = singleton->Wins.at(i);
+            TexxyWindow* win = singleton->Wins.at(i);
             for (int j = 0; j < win->ui->tabWidget->count(); ++j)
                 qobject_cast<TabPage*>(win->ui->tabWidget->widget(j))->textEdit()->setInertialScrolling(false);
         }
@@ -1293,14 +1293,14 @@ void PrefDialog::prefInertialScrolling(int checked) {
 }
 /*************************/
 void PrefDialog::prefExecute(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked) {
         config.setExecuteScripts(true);
         ui->commandEdit->setEnabled(true);
         ui->commandLabel->setEnabled(true);
         for (int i = 0; i < singleton->Wins.count(); ++i) {
-            FPwin* win = singleton->Wins.at(i);
+            TexxyWindow* win = singleton->Wins.at(i);
             if (TabPage* tabPage = qobject_cast<TabPage*>(win->ui->tabWidget->currentWidget())) {
                 TextEdit* textEdit = tabPage->textEdit();
                 if (win->isScriptLang(textEdit->getProg()) && QFileInfo(textEdit->getFileName()).isExecutable())
@@ -1318,12 +1318,12 @@ void PrefDialog::prefExecute(int checked) {
 }
 /*************************/
 void PrefDialog::prefCommand(const QString& command) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.setExecuteCommand(command);
 }
 /*************************/
 void PrefDialog::prefRecentFilesNumber(int value) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.setRecentFilesNumber(value);  // doesn't take effect until the next session
     ui->recentSpin->setSuffix(" " + (value > 1 ? tr("files") : tr("file")));
 
@@ -1331,7 +1331,7 @@ void PrefDialog::prefRecentFilesNumber(int value) {
 }
 /*************************/
 void PrefDialog::prefSaveLastFilesList(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setSaveLastFilesList(true);
     else if (checked == Qt::Unchecked)
@@ -1339,7 +1339,7 @@ void PrefDialog::prefSaveLastFilesList(int checked) {
 }
 /*************************/
 void PrefDialog::prefRecentFilesKind() {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     bool openedKind = ui->openedButton->isChecked();
     if (config.getRecentOpened() != openedKind) {
@@ -1353,7 +1353,7 @@ void PrefDialog::prefRecentFilesKind() {
 }
 /*************************/
 void PrefDialog::prefStartSize(int value) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     QSize startSize = config.getStartSize();
     if (QObject::sender() == ui->spinX)
         startSize.setWidth(value);
@@ -1363,7 +1363,7 @@ void PrefDialog::prefStartSize(int value) {
 }
 /*************************/
 void PrefDialog::prefOpenInWindows(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked)
         config.setOpenInWindows(true);
@@ -1372,7 +1372,7 @@ void PrefDialog::prefOpenInWindows(int checked) {
 }
 /*************************/
 void PrefDialog::prefNativeDialog(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked)
         config.setNativeDialog(true);
@@ -1381,7 +1381,7 @@ void PrefDialog::prefNativeDialog(int checked) {
 }
 /*************************/
 void PrefDialog::prefSidePaneMode(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked)
         config.setSidePaneMode(true);
@@ -1390,7 +1390,7 @@ void PrefDialog::prefSidePaneMode(int checked) {
 }
 /*************************/
 void PrefDialog::prefSplitterPos(int checked) {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (checked == Qt::Checked)
         config.setRemSplitterPos(true);
@@ -1400,7 +1400,7 @@ void PrefDialog::prefSplitterPos(int checked) {
 /*************************/
 // NOTE: Custom shortcuts will be saved in the PortableText format.
 void PrefDialog::onShortcutChange(QTableWidgetItem* item) {
-    Config config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
     QString desc = ui->tableWidget->item(ui->tableWidget->currentRow(), 0)->text();
 
     QString txt = item->text();
@@ -1453,7 +1453,7 @@ void PrefDialog::onShortcutChange(QTableWidgetItem* item) {
 }
 /*************************/
 void PrefDialog::restoreDefaultShortcuts() {
-    if (newShortcuts_.isEmpty() && static_cast<FPsingleton*>(qApp)
+    if (newShortcuts_.isEmpty() && static_cast<TexxyApplication*>(qApp)
                                        ->getConfig()
                                        .customShortcutActions()
                                        .isEmpty()) {  // do nothing if there's no custom shortcut
@@ -1486,7 +1486,7 @@ void PrefDialog::restoreDefaultShortcuts() {
 }
 /*************************/
 void PrefDialog::prefShortcuts() {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     QHash<QString, QString>::const_iterator it = newShortcuts_.constBegin();
     while (it != newShortcuts_.constEnd()) {
@@ -1499,7 +1499,7 @@ void PrefDialog::prefShortcuts() {
     /* update the shortcuts for all windows
        (the current window will update them on closing this dialog) */
     for (int i = 0; i < singleton->Wins.count(); ++i) {
-        FPwin* win = singleton->Wins.at(i);
+        TexxyWindow* win = singleton->Wins.at(i);
         if (win != parent_)
             win->updateCustomizableShortcuts();
     }
@@ -1514,13 +1514,13 @@ void PrefDialog::prefAutoSave(int checked) {
 }
 /*************************/
 void PrefDialog::prefSaveUnmodified() {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     if (ui->unmodifiedSaveBox->isChecked() == saveUnmodified_)
         return;  // do nothing when it isn't changed
     config.setSaveUnmodified(!saveUnmodified_);
     for (int i = 0; i < singleton->Wins.count(); ++i) {
-        FPwin* win = singleton->Wins.at(i);
+        TexxyWindow* win = singleton->Wins.at(i);
         if (TabPage* tabPage = qobject_cast<TabPage*>(win->ui->tabWidget->currentWidget())) {
             TextEdit* textEdit = tabPage->textEdit();
             if (!saveUnmodified_)  // meaans that unmodified docs can be saved now
@@ -1534,15 +1534,15 @@ void PrefDialog::prefSaveUnmodified() {
         for (int j = 0; j < win->ui->tabWidget->count(); ++j) {
             TextEdit* textEdit = qobject_cast<TabPage*>(win->ui->tabWidget->widget(j))->textEdit();
             if (!saveUnmodified_)
-                disconnect(textEdit->document(), &QTextDocument::modificationChanged, win, &FPwin::enableSaving);
+                disconnect(textEdit->document(), &QTextDocument::modificationChanged, win, &TexxyWindow::enableSaving);
             else
-                connect(textEdit->document(), &QTextDocument::modificationChanged, win, &FPwin::enableSaving);
+                connect(textEdit->document(), &QTextDocument::modificationChanged, win, &TexxyWindow::enableSaving);
         }
     }
 }
 /*************************/
 void PrefDialog::prefApplyAutoSave() {
-    FPsingleton* singleton = static_cast<FPsingleton*>(qApp);
+    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     Config& config = singleton->getConfig();
     bool as = ui->autoSaveBox->isChecked();
     int interval = ui->autoSaveSpin->value();
@@ -1562,12 +1562,12 @@ void PrefDialog::prefTextTabSize(int value) {  // textTabSize_ is updated but th
 }
 /*************************/
 void PrefDialog::prefTextTab() {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.setTextTabSize(textTabSize_);
 }
 /*************************/
 void PrefDialog::prefCloseWithLastTab(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setCloseWithLastTab(true);
     else if (checked == Qt::Unchecked)
@@ -1575,7 +1575,7 @@ void PrefDialog::prefCloseWithLastTab(int checked) {
 }
 /*************************/
 void PrefDialog::prefSpellCheck(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setSpellCheckFromStart(false);
     else if (checked == Qt::Unchecked)
@@ -1583,7 +1583,7 @@ void PrefDialog::prefSpellCheck(int checked) {
 }
 /*************************/
 void PrefDialog::addDict() {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (QObject::sender() == ui->dictEdit) {
         config.setDictPath(ui->dictEdit->text());
         return;
@@ -1620,7 +1620,7 @@ void PrefDialog::addDict() {
 void PrefDialog::restoreDefaultSyntaxColors() {
     prefCustomSyntaxColors_.clear();
     ui->defaultSyntaxButton->setDisabled(true);
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.setCustomSyntaxColors(prefCustomSyntaxColors_);
     config.setWhiteSpaceValue(config.getDefaultWhiteSpaceValue());
     config.setCurLineHighlight(-1);
@@ -1668,7 +1668,7 @@ void PrefDialog::changeSyntaxColor(int row, int column) {
                 QColor prevColor = label->palette().color(QPalette::Window);
                 QColor color = QColorDialog::getColor(prevColor, this, tr("Select Syntax Color"));
                 if (color.isValid() && color != prevColor) {
-                    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+                    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
                     if (QTableWidgetItem* item = ui->syntaxTableWidget->item(row, 0)) {
                         QString syntax = item->data(Qt::UserRole).toString();
 
@@ -1724,7 +1724,7 @@ void PrefDialog::changeSyntaxColor(int row, int column) {
 }
 /*************************/
 void PrefDialog::changeWhitespaceValue(int value) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.setWhiteSpaceValue(value);  // takes care of repeated colors
     ui->defaultSyntaxButton->setEnabled(!config.customSyntaxColors().isEmpty() ||
                                         config.getWhiteSpaceValue() != config.getDefaultWhiteSpaceValue() ||
@@ -1733,7 +1733,7 @@ void PrefDialog::changeWhitespaceValue(int value) {
 }
 /*************************/
 void PrefDialog::changeCurLineHighlight(int value) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.setCurLineHighlight(value);
     ui->defaultSyntaxButton->setEnabled(!config.customSyntaxColors().isEmpty() ||
                                         config.getWhiteSpaceValue() != config.getDefaultWhiteSpaceValue() ||
@@ -1742,7 +1742,7 @@ void PrefDialog::changeCurLineHighlight(int value) {
 }
 /*************************/
 void PrefDialog::disableMenubarAccel(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setDisableMenubarAccel(true);
     else if (checked == Qt::Unchecked)
@@ -1752,7 +1752,7 @@ void PrefDialog::disableMenubarAccel(int checked) {
 }
 /*************************/
 void PrefDialog::prefIcon(int checked) {
-    Config& config = static_cast<FPsingleton*>(qApp)->getConfig();
+    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     if (checked == Qt::Checked)
         config.setSysIcons(true);
     else if (checked == Qt::Unchecked)

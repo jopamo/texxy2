@@ -2,15 +2,15 @@
  * texxy/replace.cpp
  */
 
-#include "fpwin.h"
-#include "ui_fp.h"
+#include "texxywindow.h"
+#include "ui_texxywindow.h"
 
 #include <algorithm>  // std::min
 #include <QtGlobal>   // qsizetype
 
 namespace Texxy {
 
-void FPwin::removeGreenSel() {
+void TexxyWindow::removeGreenSel() {
     // remove green highlights, considering the selection order:
     // current line -> replacement -> found matches -> selection highlights -> column highlight -> bracket matches
     const int count = ui->tabWidget->count();
@@ -43,7 +43,7 @@ void FPwin::removeGreenSel() {
     }
 }
 /*************************/
-void FPwin::replaceDock() {
+void TexxyWindow::replaceDock() {
     if (!isReady())
         return;
 
@@ -67,7 +67,7 @@ void FPwin::replaceDock() {
 // When the dock becomes invisible, clear the replacing text and remove only green highlights
 // Although it doesn't concern us, when docking or undocking, the widget first becomes invisible
 // for a moment and then visible again
-void FPwin::dockVisibilityChanged(bool visible) {
+void TexxyWindow::dockVisibilityChanged(bool visible) {
     if (visible || isMinimized())
         return;
 
@@ -86,12 +86,12 @@ void FPwin::dockVisibilityChanged(bool visible) {
 }
 /*************************/
 // Resize the floating dock widget to its minimum size
-void FPwin::resizeDock(bool topLevel) {
+void TexxyWindow::resizeDock(bool topLevel) {
     if (topLevel)
         ui->dockReplace->resize(ui->dockReplace->minimumWidth(), ui->dockReplace->minimumHeight());
 }
 /*************************/
-void FPwin::replace() {
+void TexxyWindow::replace() {
     if (!isReady())
         return;
 
@@ -191,7 +191,7 @@ void FPwin::replace() {
     hlight();
 }
 /*************************/
-void FPwin::replaceAll() {
+void TexxyWindow::replaceAll() {
     if (!isReady())
         return;
 

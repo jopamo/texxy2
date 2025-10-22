@@ -17,8 +17,8 @@
  * @license GPL-3.0+ <https://spdx.org/licenses/GPL-3.0+.html>
  */
 
-#ifndef FPWIN_H
-#define FPWIN_H
+#ifndef TEXXYWINDOW_H
+#define TEXXYWINDOW_H
 
 #include <QMainWindow>
 #include <QActionGroup>
@@ -32,16 +32,16 @@
 namespace Texxy {
 
 namespace Ui {
-class FPwin;
+class TexxyWindow;
 }
 
 // A Texxy window.
-class FPwin : public QMainWindow {
+class TexxyWindow : public QMainWindow {
     Q_OBJECT
 
    public:
-    explicit FPwin(QWidget* parent = nullptr);
-    ~FPwin();
+    explicit TexxyWindow(QWidget* parent = nullptr);
+    ~TexxyWindow();
 
     void cleanUpOnTerminating(Config& config, bool isLastWin);
 
@@ -201,12 +201,10 @@ class FPwin : public QMainWindow {
 
    public:
     QWidget* dummyWidget;  // Bypasses KDE's demand for a new window.
-    Ui::FPwin* ui;
+    Ui::TexxyWindow* ui;
 
    private:
     enum DOCSTATE { SAVED, UNDECIDED, DISCARDED };
-
-    enum class EncodingType { Utf8, Utf16, Iso88591 };
 
     TabPage* createEmptyTab(bool setCurrent, bool allowNormalHighlighter = true);
     bool hasAnotherDialog();
@@ -228,14 +226,6 @@ class FPwin : public QMainWindow {
                         bool closingWindow = false,
                         QListWidgetItem* curItem = nullptr,
                         TabPage* curPage = nullptr);
-    QString determineFileName(QString fname, TextEdit* textEdit, const QString& filter);
-    void handleSaveError(const QString& fileName);
-    bool handleSaveAsDialog(QString& fname, const QString& filter, Config& config);
-    void removeTrailingSpaces(TextEdit* textEdit);
-    void appendEmptyLine(TextEdit* textEdit);
-    bool writeToFile(QString& fname, TextEdit* textEdit, bool MSWinLineEnd);
-    bool writeEncodedFile(QString& fname, const QString& contents, EncodingType encType);
-    void updateFileProperties(QString& fname, TextEdit* textEdit);
     bool saveFile(bool keepSyntax,
                   int first = 0,
                   int last = 0,
@@ -312,4 +302,4 @@ class FPwin : public QMainWindow {
 
 }  // namespace Texxy
 
-#endif  // FPWIN_H
+#endif  // TEXXYWINDOW_H

@@ -199,8 +199,8 @@ class TextEdit : public QPlainTextEdit {
    signals:
     /* inform the main widget */
     void filePasted(const QString& localFile,
-                    int restoreCursor,  // Only for connecting to FPwin::newTabFromName().
-                    int posInLine,      // Only for connecting to FPwin::newTabFromName().
+                    int restoreCursor,  // Only for connecting to TexxyWindow::newTabFromName().
+                    int posInLine,      // Only for connecting to TexxyWindow::newTabFromName().
                     bool multiple);     // Multiple files are dropped?
     void resized();                     // needed by syntax highlighting
     void selChanged();                  // needed by a workaround
@@ -313,7 +313,7 @@ class TextEdit : public QPlainTextEdit {
     bool selectionHighlighting_;                 // should selections be highlighted?
     bool highlightThisSelection_;                // should this selection be highlighted?
     bool removeSelectionHighlights_;             // used only internally
-    bool matchedBrackets_;                       // is bracket matching done (is FPwin::matchBrackets called)?
+    bool matchedBrackets_;                       // is bracket matching done (is TexxyWindow::matchBrackets called)?
     bool uneditable_;                            // the doc should be made uneditable because of its contents
     QPointer<QSyntaxHighlighter> highlighter_;   // syntax highlighter
     bool saveCursor_;

@@ -96,7 +96,7 @@ Config::Config()
 Config::~Config() {}
 
 void Config::readConfig() {
-    Settings settings("texxy", "fp");
+    Settings settings("texxy", "texxy");
 
     // window
     settings.beginGroup("window");
@@ -246,7 +246,7 @@ void Config::resetFont() {
 
 void Config::readShortcuts() {
     // do not read global custom shortcuts so user can restore defaults
-    Settings tmp("texxy", "fp");
+    Settings tmp("texxy", "texxy");
     Settings settings(tmp.fileName(), QSettings::NativeFormat);
 
     settings.beginGroup("shortcuts");
@@ -267,7 +267,7 @@ QStringList Config::getLastFiles() {
     if (!saveLastFilesList_)
         return QStringList();
 
-    Settings settingsLastCur("texxy", "fp_last_cursor_pos");
+    Settings settingsLastCur("texxy", "texxy_last_cursor_pos");
     lasFilesCursorPos_ = settingsLastCur.value("cursorPositions").toHash();
 
     QStringList lastFiles = lasFilesCursorPos_.keys();
@@ -282,7 +282,7 @@ void Config::readSyntaxColors() {
     customSyntaxColors_.clear();
 
     // do not read global custom colors so user can restore defaults
-    Settings tmp("texxy", darkColScheme_ ? "fp_dark_syntax_colors" : "fp_light_syntax_colors");
+    Settings tmp("texxy", darkColScheme_ ? "texxy_dark_syntax_colors" : "texxy_light_syntax_colors");
     Settings settingsColors(tmp.fileName(), QSettings::NativeFormat);
 
     settingsColors.beginGroup("curLineHighlight");
@@ -323,7 +323,7 @@ void Config::readSyntaxColors() {
 }
 
 void Config::writeConfig() {
-    Settings settings("texxy", "fp");
+    Settings settings("texxy", "texxy");
     if (!settings.isWritable())
         return;
 
@@ -436,20 +436,20 @@ void Config::writeConfig() {
 
 void Config::readCursorPos() {
     if (!cursorPosRetrieved_) {
-        Settings settings("texxy", "fp_cursor_pos");
+        Settings settings("texxy", "texxy_cursor_pos");
         cursorPos_ = settings.value("cursorPositions").toHash();
         cursorPosRetrieved_ = true;
     }
 }
 
 void Config::writeCursorPos() {
-    Settings settings("texxy", "fp_cursor_pos");
+    Settings settings("texxy", "texxy_cursor_pos");
     if (settings.isWritable()) {
         if (!cursorPos_.isEmpty())
             settings.setValue("cursorPositions", cursorPos_);
     }
 
-    Settings settingsLastCur("texxy", "fp_last_cursor_pos");
+    Settings settingsLastCur("texxy", "texxy_last_cursor_pos");
     if (settingsLastCur.isWritable()) {
         if (saveLastFilesList_ && !lasFilesCursorPos_.isEmpty())
             settingsLastCur.setValue("cursorPositions", lasFilesCursorPos_);
@@ -459,7 +459,7 @@ void Config::writeCursorPos() {
 }
 
 void Config::writeSyntaxColors() {
-    Settings settingsColors("texxy", darkColScheme_ ? "fp_dark_syntax_colors" : "fp_light_syntax_colors");
+    Settings settingsColors("texxy", darkColScheme_ ? "texxy_dark_syntax_colors" : "texxy_light_syntax_colors");
 
     if (customSyntaxColors_.isEmpty()) {
         if (whiteSpaceValue_ != getDefaultWhiteSpaceValue() || curLineHighlight_ != -1) {

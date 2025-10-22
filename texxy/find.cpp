@@ -2,8 +2,8 @@
  * texxy/find.cpp
  */
 
-#include "fpwin.h"
-#include "ui_fp.h"
+#include "texxywindow.h"
+#include "ui_texxywindow.h"
 #include <QPlainTextEdit>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -14,7 +14,7 @@ namespace Texxy {
 /* This order is preserved everywhere for selections:
    current line -> replacement -> found matches -> selection highlights -> column highlight -> bracket matches */
 
-void FPwin::find(bool forward) {
+void TexxyWindow::find(bool forward) {
     if (!isReady())
         return;
 
@@ -31,9 +31,9 @@ void FPwin::find(bool forward) {
     }
 
     // reduce redundant paints during search
-    disconnect(textEdit, &TextEdit::resized, this, &FPwin::hlight);
-    disconnect(textEdit, &TextEdit::updateRect, this, &FPwin::hlight);
-    disconnect(textEdit, &QPlainTextEdit::textChanged, this, &FPwin::hlight);
+    disconnect(textEdit, &TextEdit::resized, this, &TexxyWindow::hlight);
+    disconnect(textEdit, &TextEdit::updateRect, this, &TexxyWindow::hlight);
+    disconnect(textEdit, &QPlainTextEdit::textChanged, this, &TexxyWindow::hlight);
 
     const bool showLineCtx = ui->actionLineNumbers->isChecked() || ui->spinBox->isVisible();
 
@@ -73,14 +73,14 @@ void FPwin::find(bool forward) {
     hlight();
 
     // reconnect after highlight
-    connect(textEdit, &QPlainTextEdit::textChanged, this, &FPwin::hlight);
-    connect(textEdit, &TextEdit::updateRect, this, &FPwin::hlight);
-    connect(textEdit, &TextEdit::resized, this, &FPwin::hlight);
+    connect(textEdit, &QPlainTextEdit::textChanged, this, &TexxyWindow::hlight);
+    connect(textEdit, &TextEdit::updateRect, this, &TexxyWindow::hlight);
+    connect(textEdit, &TextEdit::resized, this, &TexxyWindow::hlight);
 }
 
 /*************************/
 // Highlight found matches in the visible part of the text
-void FPwin::hlight() const {
+void TexxyWindow::hlight() const {
     auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
     if (!tabPage)
         return;
@@ -141,7 +141,7 @@ void FPwin::hlight() const {
 }
 
 /*************************/
-void FPwin::searchFlagChanged() {
+void TexxyWindow::searchFlagChanged() {
     if (!isReady())
         return;
 
@@ -162,7 +162,7 @@ void FPwin::searchFlagChanged() {
 }
 
 /*************************/
-QTextDocument::FindFlags FPwin::getSearchFlags() const {
+QTextDocument::FindFlags TexxyWindow::getSearchFlags() const {
     auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
     QTextDocument::FindFlags flags;
     if (tabPage) {

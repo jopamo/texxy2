@@ -25,7 +25,7 @@ namespace Texxy {
 static constexpr const char* serviceName = "org.texxy.Texxy";
 static constexpr const char* ifaceName = "org.texxy.Application";
 
-FPsingleton::FPsingleton(int& argc, char** argv) : QApplication(argc, argv) {
+TexxyApplication::TexxyApplication(int& argc, char** argv) : QApplication(argc, argv) {
 #ifdef HAS_X11
     const QString platform = QGuiApplication::platformName();
     isX11_ = (QString::compare(platform, QStringLiteral("xcb"), Qt::CaseInsensitive) == 0);
@@ -48,11 +48,11 @@ FPsingleton::FPsingleton(int& argc, char** argv) : QApplication(argc, argv) {
         searchModel_ = nullptr;
 }
 
-FPsingleton::~FPsingleton() {
+TexxyApplication::~TexxyApplication() {
     qDeleteAll(Wins);
 }
 
-void FPsingleton::init(bool standalone) {
+void TexxyApplication::init(bool standalone) {
     standalone_ = standalone;
     isPrimaryInstance_ = standalone;
 
@@ -70,7 +70,7 @@ void FPsingleton::init(bool standalone) {
     }
 }
 
-void FPsingleton::quitting() {
+void TexxyApplication::quitting() {
     // save important info if windows aren't closed
     for (int i = 0; i < Wins.size(); ++i)
         Wins.at(i)->cleanUpOnTerminating(config_, i == Wins.size() - 1);
@@ -81,12 +81,12 @@ void FPsingleton::quitting() {
     config_.writeConfig();
 }
 
-void FPsingleton::quitSignalReceived() {
+void TexxyApplication::quitSignalReceived() {
     quitSignalReceived_ = true;
     quit();
 }
 
-void FPsingleton::sendInfo(const QStringList& info) {
+void TexxyApplication::sendInfo(const QStringList& info) {
     QDBusConnection dbus = QDBusConnection::sessionBus();
     QDBusInterface iface(QLatin1String(serviceName), QStringLiteral("/Application"), QLatin1String(ifaceName), dbus,
                          this);
@@ -94,7 +94,7 @@ void FPsingleton::sendInfo(const QStringList& info) {
 }
 
 // called only in standalone mode
-void FPsingleton::sendRecentFile(const QString& file, bool recentOpened) {
+void TexxyApplication::sendRecentFile(const QString& file, bool recentOpened) {
     QDBusMessage methodCall = QDBusMessage::createMethodCall(QLatin1String(serviceName), QStringLiteral("/Application"),
                                                              QString(), QStringLiteral("addRecentFile"));
     methodCall.setAutoStartService(false);
@@ -102,7 +102,7 @@ void FPsingleton::sendRecentFile(const QString& file, bool recentOpened) {
     QDBusConnection::sessionBus().call(methodCall, QDBus::NoBlock, 1000);
 }
 
-bool FPsingleton::cursorInfo(const QString& commndOpt, int& lineNum, int& posInLine) {
+bool TexxyApplication::cursorInfo(const QString& commndOpt, int& lineNum, int& posInLine) {
     if (commndOpt.isEmpty())
         return false;
 
@@ -110,7 +110,7 @@ bool FPsingleton::cursorInfo(const QString& commndOpt, int& lineNum, int& posInL
     posInLine = 0;
 
     if (commndOpt == QStringLiteral("+")) {
-        lineNum = -2;  // means the end (-> FPwin::newTabFromName)
+        lineNum = -2;  // means the end (-> TexxyWindow::newTabFromName)
         posInLine = 0;
         return true;
     }
@@ -118,8 +118,8 @@ bool FPsingleton::cursorInfo(const QString& commndOpt, int& lineNum, int& posInL
         bool ok = false;
         lineNum = commndOpt.toInt(&ok);  // "+" is included
         if (ok) {
-            if (lineNum > 0)   // otherwise, the cursor will be ignored (-> FPwin::newTabFromName)
-                lineNum += 1;  // 1 is reserved for session files (-> FPwin::newTabFromName)
+            if (lineNum > 0)   // otherwise, the cursor will be ignored (-> TexxyWindow::newTabFromName)
+                lineNum += 1;  // 1 is reserved for session files (-> TexxyWindow::newTabFromName)
             return true;
         }
         else {
@@ -140,7 +140,7 @@ bool FPsingleton::cursorInfo(const QString& commndOpt, int& lineNum, int& posInL
     return false;
 }
 
-QStringList FPsingleton::processInfo(const QStringList& info,
+QStringList TexxyApplication::processInfo(const QStringList& info,
                                      long& desktop,
                                      int& lineNum,
                                      int& posInLine,
@@ -226,7 +226,7 @@ QStringList FPsingleton::processInfo(const QStringList& info,
     return filesList;
 }
 
-void FPsingleton::firstWin(const QStringList& info) {
+void TexxyApplication::firstWin(const QStringList& info) {
 #if defined Q_OS_LINUX || defined Q_OS_FREEBSD || defined Q_OS_OPENBSD || defined Q_OS_NETBSD || defined Q_OS_HURD
     isRoot_ = (geteuid() == 0);
 #endif
@@ -241,36 +241,36 @@ void FPsingleton::firstWin(const QStringList& info) {
     lastFiles_.clear();  // they should be called only with the session start
 }
 
-FPwin* FPsingleton::newWin(const QStringList& filesList, int lineNum, int posInLine) {
-    FPwin* fp = new FPwin(nullptr);
-    fp->show();
+TexxyWindow* TexxyApplication::newWin(const QStringList& filesList, int lineNum, int posInLine) {
+    TexxyWindow* window = new TexxyWindow(nullptr);
+    window->show();
 
     if (isRoot_)
-        fp->showRootWarning();
+        window->showRootWarning();
 
-    Wins.append(fp);
+    Wins.append(window);
 
     if (!filesList.isEmpty()) {
-        const bool multiple = (filesList.count() > 1 || fp->isLoading());
+        const bool multiple = (filesList.count() > 1 || window->isLoading());
         for (int i = 0; i < filesList.count(); ++i)
-            fp->newTabFromName(filesList.at(i), lineNum, posInLine, multiple);
+            window->newTabFromName(filesList.at(i), lineNum, posInLine, multiple);
     }
     else if (!lastFiles_.isEmpty()) {
-        const bool multiple = (lastFiles_.count() > 1 || fp->isLoading());
+        const bool multiple = (lastFiles_.count() > 1 || window->isLoading());
         for (int i = 0; i < lastFiles_.count(); ++i)
-            fp->newTabFromName(lastFiles_.at(i), -1, 0, multiple);  // restore cursor positions too
+            window->newTabFromName(lastFiles_.at(i), -1, 0, multiple);  // restore cursor positions too
     }
 
-    return fp;
+    return window;
 }
 
-void FPsingleton::removeWin(FPwin* win) {
+void TexxyApplication::removeWin(TexxyWindow* win) {
     Wins.removeOne(win);
     win->deleteLater();
 }
 
 // called only by D-Bus
-void FPsingleton::handleInfo(const QStringList& info) {
+void TexxyApplication::handleInfo(const QStringList& info) {
     int lineNum = 0, posInLine = 0;
     long d = -1;
     bool openNewWin = false;
@@ -290,7 +290,7 @@ void FPsingleton::handleInfo(const QStringList& info) {
             sr = pScreen->virtualGeometry();
 
         for (int i = 0; i < Wins.count(); ++i) {
-            FPwin* thisWin = Wins.at(i);
+            TexxyWindow* thisWin = Wins.at(i);
 #ifdef HAS_X11
             WId id = thisWin->winId();
             long whichDesktop = -1;
@@ -344,7 +344,7 @@ void FPsingleton::handleInfo(const QStringList& info) {
 }
 
 // called only by D-Bus
-void FPsingleton::addRecentFile(const QString& file, bool recentOpened) {
+void TexxyApplication::addRecentFile(const QString& file, bool recentOpened) {
     if (config_.getRecentOpened() == recentOpened)
         config_.addRecentFile(file);
 }
