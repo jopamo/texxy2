@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QToolTip>
 #include <QScrollBar>
 #include <QMouseEvent>
@@ -15,8 +16,10 @@
 #include <QRegularExpression>
 #include <QUrl>
 #include <QDir>
+#include <algorithm>
 
 #include "sidepane.h"
+#include "svgicons.h"
 
 namespace Texxy {
 
@@ -193,6 +196,52 @@ SidePane::SidePane(QWidget* parent) : QWidget(parent) {
     filesGrid->setVerticalSpacing(4);
     filesGrid->setContentsMargins(0, 0, 0, 0);
 
+    fileControls_ = new QWidget(fileTab_);
+    auto* controlsLayout = new QHBoxLayout(fileControls_);
+    controlsLayout->setContentsMargins(0, 0, 0, 0);
+    controlsLayout->setSpacing(4);
+
+    rootLabel_ = new QLabel(fileControls_);
+    rootLabel_->setObjectName(QStringLiteral("rootLabel"));
+    rootLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    rootLabel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    upButton_ = new QToolButton(fileControls_);
+    upButton_->setIcon(QIcon::fromTheme(QStringLiteral("go-up"),
+                                        symbolicIcon::icon(QStringLiteral(":icons/go-up.svg"))));
+    upButton_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    upButton_->setAutoRaise(true);
+    upButton_->setToolTip(tr("Go to parent directory"));
+
+    homeButton_ = new QToolButton(fileControls_);
+    homeButton_->setIcon(QIcon::fromTheme(QStringLiteral("go-home"),
+                                          symbolicIcon::icon(QStringLiteral(":icons/texxy.svg"))));
+    homeButton_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    homeButton_->setAutoRaise(true);
+    homeButton_->setToolTip(tr("Go to home directory"));
+
+    currentButton_ = new QToolButton(fileControls_);
+    currentButton_->setIcon(QIcon::fromTheme(QStringLiteral("go-jump"),
+                                             symbolicIcon::icon(QStringLiteral(":icons/go-jump.svg"))));
+    currentButton_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    currentButton_->setAutoRaise(true);
+    currentButton_->setToolTip(tr("Reveal current file"));
+
+    refreshButton_ = new QToolButton(fileControls_);
+    refreshButton_->setIcon(QIcon::fromTheme(QStringLiteral("view-refresh"),
+                                             symbolicIcon::icon(QStringLiteral(":icons/view-refresh.svg"))));
+    refreshButton_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    refreshButton_->setAutoRaise(true);
+    refreshButton_->setToolTip(tr("Refresh file list"));
+
+    controlsLayout->addWidget(rootLabel_, /*stretch*/ 1);
+    controlsLayout->addWidget(upButton_);
+    controlsLayout->addWidget(homeButton_);
+    controlsLayout->addWidget(currentButton_);
+    controlsLayout->addWidget(refreshButton_);
+
+    filesGrid->addWidget(fileControls_, 0, 0);
+
     fsModel_ = new QFileSystemModel(fileTab_);
     fsModel_->setResolveSymlinks(true);
     fsModel_->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot);
@@ -214,11 +263,11 @@ SidePane::SidePane(QWidget* parent) : QWidget(parent) {
     tree_->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     tree_->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     tree_->header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    filesGrid->addWidget(tree_, 0, 0);
+    filesGrid->addWidget(tree_, 1, 0);
 
     fileFilter_ = new LineEdit(fileTab_);
     fileFilter_->setPlaceholderText(tr("Filter files..."));
-    filesGrid->addWidget(fileFilter_, 1, 0);
+    filesGrid->addWidget(fileFilter_, 2, 0);
 
     tabs_->addTab(fileTab_, tr("Files"));
 
@@ -250,6 +299,10 @@ SidePane::SidePane(QWidget* parent) : QWidget(parent) {
             tree_->setExpanded(idx, !tree_->isExpanded(idx));  // only toggle directories
     });
     connect(tree_, &QTreeView::customContextMenuRequested, this, &SidePane::onTreeContextMenuRequested);
+    connect(upButton_, &QAbstractButton::clicked, this, [this] { navigateRootUp(); });
+    connect(homeButton_, &QAbstractButton::clicked, this, [this] { goHome(); });
+    connect(currentButton_, &QAbstractButton::clicked, this, [this] { revealLastOpened(); });
+    connect(refreshButton_, &QAbstractButton::clicked, this, [this] { refreshModel(); });
 
     // keyboard: Enter opens all selected
     tree_->installEventFilter(this);
@@ -260,6 +313,7 @@ SidePane::SidePane(QWidget* parent) : QWidget(parent) {
     const QModelIndex proxyRoot = proxy_->mapFromSource(srcRoot);
     tree_->setRootIndex(proxyRoot);
     tree_->expand(proxyRoot);
+    updateRootWidgets();
 
     // Optional: show only the Name column if you prefer a cleaner list
     tree_->setColumnHidden(1, true);
@@ -274,6 +328,7 @@ SidePane::SidePane(QWidget* parent) : QWidget(parent) {
         const QModelIndex pr = proxy_->mapFromSource(src);
         if (pr.isValid())
             tree_->expand(pr);
+        updateRootWidgets();
     });
 }
 
@@ -285,6 +340,12 @@ SidePane::~SidePane() {
         delete filterTimer_;
         filterTimer_ = nullptr;
     }
+}
+
+/*************************/
+void SidePane::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    updateRootWidgets();
 }
 
 /*************************/
@@ -370,24 +431,65 @@ void SidePane::lockPane(bool lock) {
         tree_->setEnabled(!lock);
     if (fileFilter_)
         fileFilter_->setEnabled(!lock);
+    if (fileControls_)
+        fileControls_->setEnabled(!lock);
+    updateRootWidgets();
 }
 
 /*************************/
 void SidePane::setProjectRoot(const QString& path) {
-    const QFileInfo fi(path);
-    const QString root = fi.exists() ? fi.canonicalFilePath() : path;
+    if (!fsModel_ || !proxy_ || !tree_)
+        return;
+
+    QFileInfo fi(path);
+    QString root = path;
+    if (fi.exists()) {
+        root = fi.isDir() ? fi.canonicalFilePath() : fi.absolutePath();
+    }
+    if (root.isEmpty())
+        root = QDir::homePath();
+    root = QDir(root).absolutePath();
+
+    if (QDir::cleanPath(fsModel_->rootPath()) == QDir::cleanPath(root)) {
+        updateRootWidgets();
+        return;
+    }
+
     const QModelIndex srcRoot = fsModel_->setRootPath(root);
     const QModelIndex proxyRoot = proxy_->mapFromSource(srcRoot);
     tree_->setRootIndex(proxyRoot);
     tree_->expand(proxyRoot);
+    tree_->scrollToTop();
+    updateRootWidgets();
 }
 
 /*************************/
 void SidePane::revealFile(const QString& path) {
-    const QFileInfo fi(path);
-    if (!fi.exists())
+    lastOpenedFile_ = path;
+    if (!fsModel_ || !proxy_ || !tree_)
         return;
-    const QModelIndex src = fsModel_->index(fi.canonicalFilePath());
+
+    const QFileInfo fi(path);
+    if (!fi.exists()) {
+        updateRootWidgets();
+        return;
+    }
+
+    QString canonical = fi.canonicalFilePath();
+    if (canonical.isEmpty())
+        canonical = fi.absoluteFilePath();
+
+    const QString rootPath = QDir::cleanPath(fsModel_->rootPath());
+    if (rootPath.isEmpty()) {
+        setProjectRoot(fi.absolutePath());
+    }
+    else {
+        const QString rel = QDir(rootPath).relativeFilePath(canonical);
+        if (rel.startsWith(QLatin1String("..")))
+            setProjectRoot(fi.absolutePath());
+    }
+
+    const QModelIndex src = fsModel_->index(canonical);
     if (!src.isValid())
         return;
     const QModelIndex idx = proxy_->mapFromSource(src);
@@ -396,6 +498,90 @@ void SidePane::revealFile(const QString& path) {
     tree_->expand(proxy_->parent(idx));
     tree_->scrollTo(idx, QAbstractItemView::PositionAtCenter);
     tree_->setCurrentIndex(idx);
+    updateRootWidgets();
+}
+
+void SidePane::updateRootWidgets() {
+    if (!rootLabel_ || !fsModel_)
+        return;
+
+    const QString rootPath = QDir::cleanPath(fsModel_->rootPath());
+    QString display = rootPath;
+    if (display.isEmpty())
+        display = tr("No directory selected");
+
+    rootLabel_->setToolTip(display);
+    const int labelWidth = rootLabel_->width() > 0 ? rootLabel_->width() : width();
+    const QString elided =
+        rootLabel_->fontMetrics().elidedText(display, Qt::ElideMiddle, std::max(labelWidth - 12, 80));
+    rootLabel_->setText(elided);
+
+    const bool hasRoot = !rootPath.isEmpty();
+    bool canGoUp = false;
+    if (hasRoot) {
+        QDir dir(rootPath);
+        canGoUp = dir.cdUp();
+    }
+
+    const bool controlsEnabled = !fileControls_ || fileControls_->isEnabled();
+    if (upButton_)
+        upButton_->setEnabled(hasRoot && canGoUp && controlsEnabled);
+    if (homeButton_)
+        homeButton_->setEnabled(controlsEnabled);
+    if (currentButton_)
+        currentButton_->setEnabled(!lastOpenedFile_.isEmpty() && controlsEnabled);
+    if (refreshButton_)
+        refreshButton_->setEnabled(hasRoot && controlsEnabled);
+}
+
+/*************************/
+void SidePane::navigateRootUp() {
+    if (!fsModel_)
+        return;
+    const QString currentRoot = QDir::cleanPath(fsModel_->rootPath());
+    if (currentRoot.isEmpty())
+        return;
+    QDir dir(currentRoot);
+    if (!dir.cdUp())
+        return;
+    setProjectRoot(dir.absolutePath());
+}
+
+/*************************/
+void SidePane::goHome() {
+    setProjectRoot(QDir::homePath());
+}
+
+/*************************/
+void SidePane::revealLastOpened() {
+    if (lastOpenedFile_.isEmpty())
+        return;
+    revealFile(lastOpenedFile_);
+}
+
+/*************************/
+void SidePane::refreshModel() {
+    if (!fsModel_)
+        return;
+    const QString root = fsModel_->rootPath();
+    if (!tree_) {
+        if (!root.isEmpty())
+            fsModel_->setRootPath(root);
+        updateRootWidgets();
+        return;
+    }
+
+    tree_->setUpdatesEnabled(false);
+    if (!root.isEmpty())
+        fsModel_->setRootPath(QString());
+    const QModelIndex srcRoot = fsModel_->setRootPath(root);
+    if (proxy_) {
+        const QModelIndex proxyRoot = proxy_->mapFromSource(srcRoot);
+        tree_->setRootIndex(proxyRoot);
+        tree_->expand(proxyRoot);
+    }
+    tree_->setUpdatesEnabled(true);
+    updateRootWidgets();
 }
 
 /*************************/

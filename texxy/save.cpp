@@ -31,6 +31,7 @@
 #include <QTimer>
 #include <QToolTip>
 #include <QStringEncoder>
+#include <QStringView>
 
 #include <algorithm>
 
@@ -58,6 +59,91 @@ QStringEncoder getEncoder(const QString& encoding) {
         return QStringEncoder(QStringConverter::Utf32);
 
     return QStringEncoder(QStringConverter::Latin1);
+}
+
+inline bool isHexDigit(QChar c) {
+    return (c >= QLatin1Char('0') && c <= QLatin1Char('9')) || (c >= QLatin1Char('a') && c <= QLatin1Char('f')) ||
+           (c >= QLatin1Char('A') && c <= QLatin1Char('F'));
+}
+
+bool parseHexLine(const QStringView& line, QByteArray& buffer, int lineNumber, QString& error) {
+    QStringView working = line;
+    const qsizetype pipePos = working.indexOf(QLatin1Char('|'));
+    if (pipePos != -1)
+        working = working.left(pipePos);
+
+    const qsizetype length = working.length();
+    qsizetype cursor = 0;
+    bool seenData = false;
+    while (cursor < length) {
+        // skip whitespace
+        while (cursor < length && working.at(cursor).isSpace())
+            ++cursor;
+        if (cursor >= length)
+            break;
+
+        qsizetype tokenEnd = cursor;
+        while (tokenEnd < length && !working.at(tokenEnd).isSpace())
+            ++tokenEnd;
+
+        const QStringView token = working.mid(cursor, tokenEnd - cursor);
+        if (!token.isEmpty()) {
+            const bool allHex = std::all_of(token.begin(), token.end(), isHexDigit);
+            if (!allHex) {
+                error = TexxyWindow::tr("Unexpected token \"%1\" on line %2.")
+                            .arg(QString(token), QString::number(lineNumber));
+                return false;
+            }
+
+            if (!seenData && token.size() == 8) {
+                // treat canonical 8-digit addresses at line start as metadata; ignore them
+            }
+            else if (token.size() == 2) {
+                bool ok = false;
+                const int value = token.toInt(&ok, 16);
+                if (!ok) {
+                    error = TexxyWindow::tr("Failed to parse token \"%1\" on line %2.")
+                                .arg(QString(token), QString::number(lineNumber));
+                    return false;
+                }
+                buffer.append(static_cast<char>(value));
+                seenData = true;
+            }
+            else {
+                error = TexxyWindow::tr("Invalid hex token \"%1\" on line %2.")
+                            .arg(QString(token), QString::number(lineNumber));
+                return false;
+            }
+        }
+
+        cursor = tokenEnd;
+    }
+
+    return true;
+}
+
+bool parseHexDocument(const QString& text, QByteArray& buffer, QString& error) {
+    buffer.clear();
+
+    QStringView view(text);
+    qsizetype start = 0;
+    int lineNumber = 1;
+    while (start <= view.size()) {
+        const qsizetype newlinePos = view.indexOf(QLatin1Char('\n'), start);
+        const qsizetype end = (newlinePos == -1) ? view.size() : newlinePos;
+        const QStringView line = view.mid(start, end - start);
+
+        if (!parseHexLine(line, buffer, lineNumber, error))
+            return false;
+
+        if (newlinePos == -1)
+            break;
+
+        start = end + 1;
+        ++lineNumber;
+    }
+
+    return true;
 }
 
 }  // namespace
@@ -133,6 +219,26 @@ bool TexxyWindow::showSaveDialogAndSetFileName(QString& fname, const QString& fi
 
 bool TexxyWindow::writeFileWithEncoding(const QString& fname, TextEdit* textEdit, bool& MSWinLineEnd) {
     const QString encoding = checkToEncoding();
+    if (encoding.compare(QStringLiteral("Hex"), Qt::CaseInsensitive) == 0) {
+        QString error;
+        QByteArray buffer;
+        if (!parseHexDocument(textEdit->document()->toPlainText(), buffer, error)) {
+            showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>\n<center><i>%2</i></center>")
+                               .arg(tr("Hex view malformed!"), error),
+                           15);
+            MSWinLineEnd = true;  // flag handled error
+            return false;
+        }
+
+        QFile file(fname);
+        if (!file.open(QIODevice::WriteOnly))
+            return false;
+        const qint64 written = file.write(buffer);
+        file.flush();
+        file.close();
+        return written == buffer.size();
+    }
+
     if (encoding == QLatin1String("UTF-16")) {
         MSWinLineEnd = true;
         return writeUtf16File(fname, textEdit);
@@ -240,6 +346,7 @@ bool TexxyWindow::saveFile(bool keepSyntax,
 
     TextEdit* textEdit = curPage->textEdit();
     QString fname = textEdit->getFileName();
+    const bool hexEncoding = textEdit->getEncoding().compare(QStringLiteral("Hex"), Qt::CaseInsensitive) == 0;
 
     QString filter = tr("All Files") + QStringLiteral(" (*)");
     if (!fname.isEmpty()) {
@@ -300,10 +407,10 @@ bool TexxyWindow::saveFile(bool keepSyntax,
     }
 
     Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
-    if (config.getRemoveTrailingSpaces())
+    if (config.getRemoveTrailingSpaces() && !hexEncoding)
         removeTrailingSpacesIfNeeded(textEdit);
 
-    if (config.getAppendEmptyLine() && !textEdit->document()->lastBlock().text().isEmpty()) {
+    if (config.getAppendEmptyLine() && !hexEncoding && !textEdit->document()->lastBlock().text().isEmpty()) {
         QTextCursor cursor = textEdit->textCursor();
         cursor.beginEditBlock();
         cursor.movePosition(QTextCursor::End);
@@ -314,7 +421,7 @@ bool TexxyWindow::saveFile(bool keepSyntax,
     bool success = false;
     bool MSWinLineEnd = false;
 
-    if (explicitSaveCodec) {
+    if (explicitSaveCodec || hexEncoding) {
         success = writeFileWithEncoding(fname, textEdit, MSWinLineEnd);
     }
     else {
@@ -329,7 +436,8 @@ bool TexxyWindow::saveFile(bool keepSyntax,
     }
 
     if (!success) {
-        handleSaveFailure(fname);
+        if (!(hexEncoding && MSWinLineEnd))  // hex path reports parse errors itself
+            handleSaveFailure(fname);
         return false;
     }
 
@@ -341,6 +449,9 @@ bool TexxyWindow::saveFile(bool keepSyntax,
     textEdit->setLastModified(fi.lastModified());
     ui->actionReload->setDisabled(false);
     setTitle(fname);
+
+    if (sidePane_)
+        sidePane_->revealFile(fname);
 
     QString tipDir = fname.contains(QLatin1Char('/')) ? fname.section(QLatin1Char('/'), 0, -2) : fi.absolutePath();
     if (!tipDir.endsWith(QLatin1Char('/')))
@@ -389,6 +500,7 @@ void TexxyWindow::saveAllFiles(bool showWarning) {
         auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->widget(i));
         TextEdit* te = tabPage->textEdit();
         QTextDocument* doc = te->document();
+        const bool hexDoc = te->getEncoding().compare(QStringLiteral("Hex"), Qt::CaseInsensitive) == 0;
 
         if (te->isUneditable() || !doc->isModified())
             continue;
@@ -397,7 +509,7 @@ void TexxyWindow::saveAllFiles(bool showWarning) {
         if (fname.isEmpty() || !QFile::exists(fname))
             continue;
 
-        if (removeTrailing && te->getProg() != QLatin1String("diff") &&
+        if (removeTrailing && !hexDoc && te->getProg() != QLatin1String("diff") &&
             QFileInfo(fname).fileName() != QLatin1String("locale.gen")) {
             makeBusy();
             const QString prog = te->getProg();
@@ -431,7 +543,7 @@ void TexxyWindow::saveAllFiles(bool showWarning) {
             unbusy();
         }
 
-        if (appendEmpty && !doc->lastBlock().text().isEmpty()) {
+        if (appendEmpty && !hexDoc && !doc->lastBlock().text().isEmpty()) {
             QTextCursor c(doc);
             c.beginEditBlock();
             c.movePosition(QTextCursor::End);
@@ -439,8 +551,17 @@ void TexxyWindow::saveAllFiles(bool showWarning) {
             c.endEditBlock();
         }
 
-        QTextDocumentWriter writer(fname, "plaintext");
-        if (writer.write(doc)) {
+        bool saved = false;
+        if (hexDoc) {
+            bool handled = false;
+            saved = writeFileWithEncoding(fname, te, handled);
+        }
+        else {
+            QTextDocumentWriter writer(fname, "plaintext");
+            saved = writer.write(doc);
+        }
+
+        if (saved) {
             inactiveTabModified_ = (i != currentIndex);
             doc->setModified(false);
 

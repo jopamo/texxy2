@@ -147,6 +147,7 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
     ui->actionUTF_8->setActionGroup(aGroup_);
     ui->actionUTF_16->setActionGroup(aGroup_);
     ui->actionISO_8859_1->setActionGroup(aGroup_);
+    ui->actionHex->setActionGroup(aGroup_);
     ui->actionOther->setActionGroup(aGroup_);
 
     ui->actionUTF_8->setChecked(true);
@@ -2209,7 +2210,7 @@ void TexxyWindow::loadText(const QString& fileName,
     else if (enforceEncod)
         charset = checkToEncoding();
     Loading* thread =
-        new Loading(fileName, charset, reload, restoreCursor, posInLine, enforceUneditable || openAsHex, multiple);
+        new Loading(fileName, charset, reload, restoreCursor, posInLine, enforceUneditable, multiple);
     const bool skipNonText = !openAsHex && static_cast<TexxyApplication*>(qApp)->getConfig().getSkipNonText();
     thread->setSkipNonText(skipNonText);
     connect(thread, &Loading::completed, this, &TexxyWindow::addText);
@@ -2357,8 +2358,11 @@ void TexxyWindow::addText(const QString& text,
     textEdit->setEncoding(charset);
     textEdit->setWordNumber(-1);
 
+    if (sidePane_ && !fileName.isEmpty())
+        sidePane_->revealFile(fileName);
+
+    textEdit->makeUneditable(uneditable);
     if (uneditable) {
-        textEdit->makeUneditable(true);
         if (!reload)  // on reload this will be connected later
             connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningUneditable, Qt::UniqueConnection);
     }
@@ -3552,6 +3556,8 @@ void TexxyWindow::encodingToCheck(const QString& encoding) {
         ui->actionUTF_16->setChecked(true);
     else if (encoding == "ISO-8859-1")
         ui->actionISO_8859_1->setChecked(true);
+    else if (encoding.compare(QStringLiteral("Hex"), Qt::CaseInsensitive) == 0)
+        ui->actionHex->setChecked(true);
     else {
         ui->actionOther->setDisabled(false);
         ui->actionOther->setChecked(true);
@@ -3567,6 +3573,8 @@ const QString TexxyWindow::checkToEncoding() const {
         encoding = "UTF-16";
     else if (ui->actionISO_8859_1->isChecked())
         encoding = "ISO-8859-1";
+    else if (ui->actionHex->isChecked())
+        encoding = "Hex";
     else
         encoding = "UTF-8";
 

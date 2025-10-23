@@ -6,13 +6,16 @@
 #define SIDEPANE_H
 
 #include <QEvent>
-#include <QTimer>
 #include <QCollator>
+#include <QLabel>
 #include <QListWidget>
 #include <QTabWidget>
 #include <QTreeView>
 #include <QFileSystemModel>
 #include <QSortFilterProxyModel>
+#include <QTimer>
+#include <QToolButton>
+#include <QResizeEvent>
 #include "lineedit.h"
 
 namespace Texxy {
@@ -88,6 +91,7 @@ class SidePane : public QWidget {
 
    protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
    private slots:
     // Open tab (existing behavior)
@@ -110,10 +114,23 @@ class SidePane : public QWidget {
 
     // Files tab widgets
     QWidget* fileTab_ = nullptr;
+    QWidget* fileControls_ = nullptr;
+    QLabel* rootLabel_ = nullptr;
+    QToolButton* upButton_ = nullptr;
+    QToolButton* homeButton_ = nullptr;
+    QToolButton* currentButton_ = nullptr;
+    QToolButton* refreshButton_ = nullptr;
     QTreeView* tree_ = nullptr;
     LineEdit* fileFilter_ = nullptr;
     QFileSystemModel* fsModel_ = nullptr;
     QSortFilterProxyModel* proxy_ = nullptr;
+    QString lastOpenedFile_;
+
+    void updateRootWidgets();
+    void navigateRootUp();
+    void goHome();
+    void revealLastOpened();
+    void refreshModel();
 };
 
 }  // namespace Texxy

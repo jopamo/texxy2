@@ -211,7 +211,6 @@ void Loading::run() {
         const qint64 len = end - begin;
         QString hexText = toHexView(begin, len);
         file.close();
-        forceUneditable_ = true;
         emit completed(hexText,
                        fname_,
                        QStringLiteral("Hex"),

@@ -232,6 +232,7 @@
      <addaction name="actionUTF_8"/>
      <addaction name="actionUTF_16"/>
      <addaction name="actionISO_8859_1"/>
+     <addaction name="actionHex"/>
      <addaction name="actionOther"/>
     </widget>
     <addaction name="actionLineNumbers"/>
@@ -779,6 +780,17 @@
    </property>
    <property name="text">
     <string>&amp;ISO-8859-1</string>
+   </property>
+  </action>
+  <action name="actionHex">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Hex</string>
    </property>
   </action>
   <action name="actionSaveCodec">
