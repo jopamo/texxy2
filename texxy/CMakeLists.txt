@@ -57,6 +57,9 @@ set(texxy_SRCS
     menubartitle.cpp
     lineedit.cpp
     textedit.cpp
+    textedit_clipboard.cpp
+    textedit_column.cpp
+    textedit_sort.cpp
     tabbar.cpp
     find.cpp
     replace.cpp

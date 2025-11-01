@@ -252,6 +252,9 @@ class TextEdit : public QPlainTextEdit {
     void scrollWithInertia();
 
    private:
+    static constexpr int kUpdateIntervalMs = 50;      // timer interval (ms)
+    static constexpr int kScrollFramesPerSec = 60;    // inertia animation FPS
+    static constexpr int kScrollDurationMs = 300;     // inertia animation duration (ms)
     QString computeIndentation(const QTextCursor& cur) const;
     QString remainingSpaces(const QString& spaceTab, const QTextCursor& cursor) const;
     QTextCursor backTabCursor(const QTextCursor& cursor, bool twoSpace) const;
