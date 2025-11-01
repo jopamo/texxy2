@@ -49,6 +49,8 @@ set(texxy_SRCS
     singleton.cpp
     signalDaemon.cpp
     texxy.cpp
+    texxy_edit.cpp
+    texxy_tabs.cpp
     save.cpp
     encoding.cpp
     tabwidget.cpp

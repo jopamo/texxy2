@@ -206,6 +206,7 @@ class TexxyWindow : public QMainWindow {
 
    private:
     enum DOCSTATE { SAVED, UNDECIDED, DISCARDED };
+    static constexpr int kMaxLastWinFiles = 50;
 
     TabPage* createEmptyTab(bool setCurrent, bool allowNormalHighlighter = true);
     bool hasAnotherDialog();
