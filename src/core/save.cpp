@@ -363,11 +363,31 @@ bool TexxyWindow::saveFile(bool keepSyntax,
     lastFile_ = fname;
     addRecentFile(lastFile_);
 
-    const bool outOfRange = (pageIndex <= first || (pageIndex >= last && last >= 0));
-    if (outOfRange && textEdit->getEncoding() != checkToEncoding()) {
-        loadText(fname, true, true, 0, 0, textEdit->isUneditable(), false);
+    const QString targetEncoding = checkToEncoding();
+    if (textEdit->getEncoding() != targetEncoding) {
+        textEdit->setEncoding(targetEncoding);
+
+        if (ui->statusBar->isVisible()) {
+            if (auto* currentPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
+                if (currentPage->textEdit() == textEdit) {
+                    if (QLabel* statusLabel = ui->statusBar->findChild<QLabel*>(QStringLiteral("statusLabel"))) {
+                        QString labelText = statusLabel->text();
+                        const QString encodingToken = tr("Encoding");
+                        const QString linesToken = QStringLiteral("</i>&nbsp;&nbsp;&nbsp;<b>%1").arg(tr("Lines"));
+                        const int encodingIndex = labelText.indexOf(encodingToken);
+                        const int linesIndex = labelText.indexOf(linesToken);
+                        const int valueOffset = encodingToken.size() + 9;  // size of ":</b> <i>"
+                        if (encodingIndex >= 0 && linesIndex > encodingIndex)
+                            labelText.replace(encodingIndex + valueOffset, linesIndex - encodingIndex - valueOffset,
+                                              targetEncoding);
+                        statusLabel->setText(labelText);
+                    }
+                }
+            }
+        }
     }
-    else if (!keepSyntax) {
+
+    if (!keepSyntax) {
         reloadSyntaxHighlighter(textEdit);
     }
 

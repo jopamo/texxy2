@@ -126,31 +126,34 @@ void TexxyWindow::startCase() {
 }
 
 void TexxyWindow::showingEditMenu() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        TextEdit* textEdit = tabPage->textEdit();
-        if (!textEdit->isReadOnly()) {
-            ui->actionPaste->setEnabled(textEdit->pastingIsPossible());
-            if (textEdit->textCursor().selectedText().contains(QChar(QChar::ParagraphSeparator))) {
-                ui->actionSortLines->setEnabled(true);
-                ui->actionRSortLines->setEnabled(true);
-                ui->ActionRmDupeSort->setEnabled(true);
-                ui->ActionRmDupeRSort->setEnabled(true);
-                ui->ActionSpaceDupeSort->setEnabled(true);
-                ui->ActionSpaceDupeRSort->setEnabled(true);
-                return;
-            }
-        }
-        else
-            ui->actionPaste->setEnabled(false);
-    }
-    else
-        ui->actionPaste->setEnabled(false);
     ui->actionSortLines->setEnabled(false);
     ui->actionRSortLines->setEnabled(false);
     ui->ActionRmDupeSort->setEnabled(false);
     ui->ActionRmDupeRSort->setEnabled(false);
     ui->ActionSpaceDupeSort->setEnabled(false);
     ui->ActionSpaceDupeRSort->setEnabled(false);
+    ui->actionPaste->setEnabled(false);
+
+    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
+        TextEdit* textEdit = tabPage->textEdit();
+        if (!textEdit->isReadOnly()) {
+            ui->actionPaste->setEnabled(textEdit->pastingIsPossible());
+            const QTextCursor cursor = textEdit->textCursor();
+            if (cursor.hasSelection()) {
+                const QString selection = cursor.selectedText();
+                if (!selection.isEmpty()) {
+                    ui->ActionSpaceDupeSort->setEnabled(true);
+                    ui->ActionSpaceDupeRSort->setEnabled(true);
+                    if (selection.contains(QChar(QChar::ParagraphSeparator))) {
+                        ui->actionSortLines->setEnabled(true);
+                        ui->actionRSortLines->setEnabled(true);
+                        ui->ActionRmDupeSort->setEnabled(true);
+                        ui->ActionRmDupeRSort->setEnabled(true);
+                    }
+                }
+            }
+        }
+    }
 }
 
 void TexxyWindow::hidngEditMenu() {
@@ -452,18 +455,25 @@ void TexxyWindow::editorContextMenu(const QPoint& p) {
             menu->addAction(ui->actionUpperCase);
             menu->addAction(ui->actionLowerCase);
             menu->addAction(ui->actionStartCase);
-            if (textEdit->textCursor().selectedText().contains(QChar(QChar::ParagraphSeparator))) {
+            const QString selection = textEdit->textCursor().selectedText();
+            bool addedSortSeparator = false;
+            if (selection.contains(QChar(QChar::ParagraphSeparator))) {
                 menu->addSeparator();
+                addedSortSeparator = true;
                 ui->actionSortLines->setEnabled(true);
                 ui->actionRSortLines->setEnabled(true);
                 ui->ActionRmDupeSort->setEnabled(true);
                 ui->ActionRmDupeRSort->setEnabled(true);
-                ui->ActionSpaceDupeSort->setEnabled(true);
-                ui->ActionSpaceDupeRSort->setEnabled(true);
                 menu->addAction(ui->actionSortLines);
                 menu->addAction(ui->actionRSortLines);
                 menu->addAction(ui->ActionRmDupeSort);
                 menu->addAction(ui->ActionRmDupeRSort);
+            }
+            if (!selection.isEmpty()) {
+                if (!addedSortSeparator)
+                    menu->addSeparator();
+                ui->ActionSpaceDupeSort->setEnabled(true);
+                ui->ActionSpaceDupeRSort->setEnabled(true);
                 menu->addAction(ui->ActionSpaceDupeSort);
                 menu->addAction(ui->ActionSpaceDupeRSort);
             }
