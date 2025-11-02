@@ -1,3 +1,4 @@
+// src/features/textedit/paint.cpp
 #include "textedit/textedit_prelude.h"
 
 namespace Texxy {

@@ -1,3 +1,4 @@
+// src/core/config.h
 /*
  * texxy/config.h
  */

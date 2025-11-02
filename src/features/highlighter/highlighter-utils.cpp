@@ -1,3 +1,4 @@
+// src/features/highlighter/highlighter-utils.cpp
 /*
  * texxy/highlighter/highlighter-utils.cpp
  */

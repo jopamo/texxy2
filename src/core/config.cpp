@@ -1,3 +1,4 @@
+// src/core/config.cpp
 /*
  * texxy/config.cpp
  */

@@ -1,4 +1,4 @@
-
+// src/ui/ui/tabwidget.h
 
 #ifndef TABWIDGET_H
 #define TABWIDGET_H

@@ -1,21 +1,51 @@
-/*
- * texxy/search/find.cpp
- */
+// src/features/search/find.cpp
 
 #include "texxywindow.h"
 #include "ui_texxywindow.h"
+
 #include <QColor>
-#include <QList>
-#include <QPoint>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QTextCursor>
 #include <QTextDocument>
-#include <algorithm>  // std::max
+#include <algorithm>  // std::clamp, std::max
 
 namespace Texxy {
 
-/* This order is preserved everywhere for selections:
-   current line -> replacement -> found matches -> selection highlights -> column highlight -> bracket matches */
+// selection layering order is preserved
+// current line -> replacement -> found matches -> selection highlights -> column highlight -> bracket matches
+
+namespace {
+
+// RAII helper to block all QObject signals temporarily to avoid repaint storms
+struct ScopedBlockSignals {
+    explicit ScopedBlockSignals(QObject* o) : obj(o) {
+        if (obj)
+            prev = obj->blockSignals(true);  // save previous state
+    }
+    ~ScopedBlockSignals() {
+        if (obj)
+            obj->blockSignals(prev);  // restore previous state
+    }
+    QPointer<QObject> obj;
+    bool prev{false};
+};
+
+// compute highlight color once per pass
+inline QColor matchColor(const TextEdit* te) {
+    if (!te->hasDarkScheme())
+        return Qt::yellow;
+    const int dv = te->getDarkValue();
+    const int alpha = static_cast<int>(static_cast<double>(dv * (dv - 257)) / 414) + 90;
+    return QColor(255, 255, 0, std::clamp(alpha, 30, 255));
+}
+
+// ensure progress for zero-length regex matches
+inline void advanceAtLeastOne(QTextCursor& c) {
+    c.movePosition(QTextCursor::NextCharacter, QTextCursor::MoveAnchor);
+}
+
+}  // namespace
 
 void TexxyWindow::find(bool forward) {
     TabPage* tabPage = nullptr;
@@ -24,16 +54,14 @@ void TexxyWindow::find(bool forward) {
         return;
 
     const QString txt = tabPage->searchEntry();
-    bool newSrch = false;
+    bool newSearch = false;
     if (textEdit->getSearchedText() != txt) {
         textEdit->setSearchedText(txt);
-        newSrch = true;
+        newSearch = true;
     }
 
-    // reduce redundant paints during search
-    disconnect(textEdit, &TextEdit::resized, this, &TexxyWindow::hlight);
-    disconnect(textEdit, &TextEdit::updateRect, this, &TexxyWindow::hlight);
-    disconnect(textEdit, &QPlainTextEdit::textChanged, this, &TexxyWindow::hlight);
+    // pause signals to avoid redundant paints while we adjust the cursor and selections
+    ScopedBlockSignals pause(textEdit);
 
     if (txt.isEmpty()) {
         QList<QTextEdit::ExtraSelection> empty;
@@ -42,37 +70,33 @@ void TexxyWindow::find(bool forward) {
         return;
     }
 
-    const bool rx = tabPage->matchRegex();
+    const bool useRegex = tabPage->matchRegex();
     const QTextDocument::FindFlags baseFlags = getSearchFlags();
     const QTextDocument::FindFlags flags = forward ? baseFlags : (baseFlags | QTextDocument::FindBackward);
 
     QTextCursor start = textEdit->textCursor();
-    QTextCursor found = textEdit->finding(txt, start, flags, rx);
+    QTextCursor found = textEdit->finding(txt, start, flags, useRegex);
 
     if (found.isNull()) {
         start.movePosition(forward ? QTextCursor::Start : QTextCursor::End, QTextCursor::MoveAnchor);
-        found = textEdit->finding(txt, start, flags, rx);
+        found = textEdit->finding(txt, start, flags, useRegex);
     }
 
     if (!found.isNull()) {
         start.setPosition(found.anchor());
-        if (newSrch)
+        if (newSearch)
             textEdit->setTextCursor(start);
         start.setPosition(found.position(), QTextCursor::KeepAnchor);
         textEdit->skipSelectionHighlighting();  // skip transient selection paints
         textEdit->setTextCursor(start);
     }
 
+    // ScopedBlockSignals ends here so hlight can emit selections once
     hlight();
-
-    // reconnect after highlight
-    connect(textEdit, &QPlainTextEdit::textChanged, this, &TexxyWindow::hlight);
-    connect(textEdit, &TextEdit::updateRect, this, &TexxyWindow::hlight);
-    connect(textEdit, &TextEdit::resized, this, &TexxyWindow::hlight);
 }
 
 /*************************/
-// Highlight found matches in the visible part of the text
+// highlight found matches only within the visible viewport for speed
 void TexxyWindow::hlight() const {
     TabPage* tabPage = currentTabPage();
     if (!tabPage)
@@ -83,7 +107,7 @@ void TexxyWindow::hlight() const {
     if (txt.isEmpty())
         return;
 
-    QList<QTextEdit::ExtraSelection> es = textEdit->getGreenSel();  // prepend green highlights
+    QList<QTextEdit::ExtraSelection> es = textEdit->getGreenSel();  // prepend existing green highlights
 
     const QWidget* vp = textEdit->viewport();
     const QPoint vpTopLeft(0, 0);
@@ -92,34 +116,42 @@ void TexxyWindow::hlight() const {
     QTextCursor start = textEdit->cursorForPosition(vpTopLeft);
     QTextCursor end = textEdit->cursorForPosition(vpBottomRight);
 
-    const bool rx = tabPage->matchRegex();
-    const int ext = rx ? 0 : txt.length();
-    const int startPos = std::max(0, start.position() - ext);
-    const int endPosSoft = end.position() + ext;
+    const bool useRegex = tabPage->matchRegex();
+    const int docLen = std::max(0, textEdit->document()->characterCount() - 1);
+    const int ext = useRegex ? 0 : txt.length();
+    const int startPos = std::clamp(start.position() - ext, 0, docLen);
+    const int endPosSoft = std::clamp(end.position() + ext, 0, docLen);
 
     start.setPosition(startPos);
     end.setPosition(endPosSoft);
 
-    if (rx || (end.position() - start.position()) >= txt.length()) {
-        QColor color =
-            textEdit->hasDarkScheme()
-                ? QColor(255, 255, 0,
-                         static_cast<int>(
-                             static_cast<double>(textEdit->getDarkValue() * (textEdit->getDarkValue() - 257)) / 414) +
-                             90)
-                : Qt::yellow;
-
+    if (useRegex || (end.position() - start.position()) >= txt.length()) {
+        const QColor color = matchColor(textEdit);
         const QTextDocument::FindFlags flags = getSearchFlags();
         const int endLimit = end.position();
+
+        es.reserve(es.size() + 32);  // reduce reallocs under dense matches
+
         QTextCursor found;
+        int lastPos = -1;
 
         // iterate forward through visible range only
-        while (!(found = textEdit->finding(txt, start, flags, rx, endLimit)).isNull()) {
+        while (!(found = textEdit->finding(txt, start, flags, useRegex, endLimit)).isNull()) {
+            // guard against zero-length progress
+            if (found.position() == lastPos) {
+                advanceAtLeastOne(start);
+                continue;
+            }
+            lastPos = found.position();
+
             QTextEdit::ExtraSelection extra;
             extra.format.setBackground(color);
             extra.cursor = found;
             es.append(extra);
+
             start.setPosition(found.position());
+            if (found.position() == found.anchor())
+                advanceAtLeastOne(start);
         }
     }
 
@@ -146,7 +178,7 @@ void TexxyWindow::searchFlagChanged() {
 /*************************/
 QTextDocument::FindFlags TexxyWindow::getSearchFlags() const {
     TabPage* tabPage = currentTabPage();
-    QTextDocument::FindFlags flags;
+    QTextDocument::FindFlags flags{};
     if (tabPage) {
         if (tabPage->matchWhole())
             flags = QTextDocument::FindWholeWords;

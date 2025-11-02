@@ -1,3 +1,4 @@
+// src/features/textedit/textedit.h
 #ifndef TEXTEDIT_H
 #define TEXTEDIT_H
 

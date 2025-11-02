@@ -1,3 +1,4 @@
+// src/ui/ui/menubartitle.cpp
 // menubartitle.cpp
 
 #include "ui/menubartitle.h"

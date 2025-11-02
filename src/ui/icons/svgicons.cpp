@@ -1,3 +1,4 @@
+// src/ui/icons/svgicons.cpp
 #include <QFile>
 #include <QIconEngine>
 #include <QSvgRenderer>

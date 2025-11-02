@@ -1,3 +1,4 @@
+// src/features/highlighter/highlighter-sh.cpp
 #include "highlighter.h"
 #include <QRegularExpression>
 

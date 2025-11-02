@@ -1,4 +1,4 @@
-
+// src/features/highlighter/highlighter-lua.cpp
 
 #include "highlighter.h"
 

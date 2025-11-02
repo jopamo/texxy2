@@ -1,3 +1,4 @@
+// src/ui/texxywindow.cpp
 /*
  * texxywindow.cpp
  */

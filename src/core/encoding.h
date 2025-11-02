@@ -1,3 +1,4 @@
+// src/core/encoding.h
 /*
   texxy/encoding.h
 */

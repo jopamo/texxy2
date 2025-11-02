@@ -1,4 +1,4 @@
-
+// src/platform/x11.cpp
 
 #include <QApplication>
 #include <QGuiApplication>

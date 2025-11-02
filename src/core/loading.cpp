@@ -1,3 +1,4 @@
+// src/core/loading.cpp
 /*
   texxy/loading.cpp
 */

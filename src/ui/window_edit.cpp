@@ -1,3 +1,4 @@
+// src/ui/window_edit.cpp
 #include "texxy_ui_prelude.h"
 
 namespace Texxy {

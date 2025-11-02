@@ -1,4 +1,4 @@
-
+// src/ui/icons/svgicons.h
 
 #ifndef SVGICONS_H
 #define SVGICONS_H

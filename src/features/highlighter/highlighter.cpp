@@ -1,4 +1,4 @@
-
+// src/features/highlighter/highlighter.cpp
 
 #include "highlighter.h"
 #include <QTextDocument>

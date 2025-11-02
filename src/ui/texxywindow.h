@@ -1,4 +1,4 @@
-
+// src/ui/texxywindow.h
 
 #ifndef TEXXYWINDOW_H
 #define TEXXYWINDOW_H

@@ -1,3 +1,4 @@
+// src/core/encoding.cpp
 /*
   texxy/encoding.cpp
   helpers for UTF-8 validation and charset detection

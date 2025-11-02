@@ -1,4 +1,4 @@
-
+// src/ui/dialogs/pref.h
 
 #ifndef PREF_H
 #define PREF_H

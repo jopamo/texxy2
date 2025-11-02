@@ -1,3 +1,4 @@
+// src/features/textedit/clipboard.cpp
 #include "textedit/textedit_prelude.h"
 
 namespace Texxy {

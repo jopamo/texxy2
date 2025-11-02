@@ -1,3 +1,4 @@
+// src/platform/signalDaemon.h
 #pragma once
 
 #include <QObject>

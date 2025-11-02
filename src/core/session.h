@@ -1,4 +1,4 @@
-
+// src/core/session.h
 
 #ifndef SESSION_H
 #define SESSION_H

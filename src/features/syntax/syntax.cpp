@@ -1,3 +1,4 @@
+// src/features/syntax/syntax.cpp
 /*
  texxy/syntax.cpp
 */

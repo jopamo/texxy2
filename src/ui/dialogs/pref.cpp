@@ -1,4 +1,4 @@
-
+// src/ui/dialogs/pref.cpp
 
 #include "singleton.h"
 #include "ui_texxywindow.h"

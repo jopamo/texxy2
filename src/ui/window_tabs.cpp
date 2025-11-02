@@ -1,3 +1,4 @@
+// src/ui/window_tabs.cpp
 // window_tabs.cpp
 
 #include "texxy_ui_prelude.h"

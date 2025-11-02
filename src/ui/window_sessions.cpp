@@ -1,3 +1,4 @@
+// src/ui/window_sessions.cpp
 /*
  * window_sessions.cpp
  */

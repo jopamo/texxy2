@@ -1,3 +1,4 @@
+// src/features/highlighter/highlighter-quotes.cpp
 /*
  * texxy/highlighter/highlighter-quotes.cpp
  */

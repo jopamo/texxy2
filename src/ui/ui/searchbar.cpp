@@ -1,4 +1,4 @@
-
+// src/ui/ui/searchbar.cpp
 
 #include <QGridLayout>
 #include <QAbstractItemView>

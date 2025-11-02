@@ -1,3 +1,4 @@
+// src/platform/singleton.h
 #pragma once
 
 #include <QApplication>

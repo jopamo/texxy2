@@ -1,3 +1,4 @@
+// src/platform/signalDaemon.cpp
 #include "signalDaemon.h"
 
 #include <cerrno>

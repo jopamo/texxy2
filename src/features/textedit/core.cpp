@@ -1,3 +1,4 @@
+// src/features/textedit/core.cpp
 #include "textedit/textedit_prelude.h"
 
 #include "ui/ui/vscrollbar.h"

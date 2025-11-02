@@ -1,3 +1,4 @@
+// src/features/highlighter/highlighter-cmake.cpp
 #include "highlighter.h"
 
 namespace Texxy {

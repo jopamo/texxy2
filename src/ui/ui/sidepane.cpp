@@ -1,3 +1,4 @@
+// src/ui/ui/sidepane.cpp
 /*
  * texxy/sidepane.cpp
  */

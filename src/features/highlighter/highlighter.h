@@ -1,3 +1,4 @@
+// src/features/highlighter/highlighter.h
 #ifndef HIGHLIGHTER_H
 #define HIGHLIGHTER_H
 

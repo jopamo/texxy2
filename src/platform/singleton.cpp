@@ -1,3 +1,4 @@
+// src/platform/singleton.cpp
 /*
  singleton.cpp
 */

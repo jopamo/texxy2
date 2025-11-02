@@ -1,3 +1,4 @@
+// src/ui/ui/menubartitle.h
 #ifndef MENUBARTITLE_H
 #define MENUBARTITLE_H
 

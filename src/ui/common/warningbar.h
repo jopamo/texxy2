@@ -1,4 +1,4 @@
-
+// src/ui/common/warningbar.h
 
 #ifndef WARNINGBAR_H
 #define WARNINGBAR_H
