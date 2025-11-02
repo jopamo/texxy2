@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+env:
+  QT_QPA_PLATFORM: offscreen  # no X server in CI
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+
+jobs:
+  clang-sanitizers:
+    name: Clang Sanitizers
+    runs-on: ubuntu-latest
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps (clang + Qt 6.9 + tools)
+        run: |
+          set -eux
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            clang \
+            lld \
+            libclang-rt-19-dev \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libhunspell-dev \
+            qt6-base-dev \
+            qtchooser \
+            qt6-base-dev-tools \
+            qt6-tools-dev \
+            qt6-tools-dev-tools \
+            qt6-svg-dev \
+            qt6-connectivity-dev \
+            qt6-declarative-dev \
+            qt6-location-dev \
+            qt6-charts-dev \
+            libqca-qt6-dev \
+            xvfb \
+            xauth \
+            x11-xserver-utils \
+            valgrind \
+            libasan8 \
+            libubsan1
+          if [ -d /usr/lib/qt6/bin ]; then
+            export PATH="/usr/lib/qt6/bin:${PATH}"
+          fi
+          if ! QT_PREFIX=$(qtpaths6 --install-prefix 2>/dev/null); then
+            QT_PREFIX="/usr/lib/qt6"
+          fi
+          if ! QT_PLUGIN_DIR=$(qtpaths6 --plugin-dir 2>/dev/null); then
+            QT_PLUGIN_DIR="${QT_PREFIX}/plugins"
+          fi
+          if ! QT_QML_DIR=$(qtpaths6 --qmldir 2>/dev/null); then
+            QT_QML_DIR="${QT_PREFIX}/qml"
+          fi
+          export QT_PLUGIN_PATH="${QT_PLUGIN_DIR}"
+          export QML2_IMPORT_PATH="${QT_QML_DIR}"
+          if [ -d "${QT_PREFIX}/lib/cmake" ]; then
+            export CMAKE_PREFIX_PATH="${QT_PREFIX}/lib/cmake:${CMAKE_PREFIX_PATH:-}"
+          fi
+          if [ -d /usr/lib/x86_64-linux-gnu/cmake ]; then
+            export CMAKE_PREFIX_PATH="/usr/lib/x86_64-linux-gnu/cmake:${CMAKE_PREFIX_PATH:-}"
+          fi
+          dpkg -l | grep -E 'qt6|icu|hunspell' || true
+          which uic
+          uic -v || true
+          ldd "$(which uic)" || true
+
+      - name: Configure build (ASan/UBSan)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-common -fuse-ld=lld" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-common -fuse-ld=lld" \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-common" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-common"
+
+      - name: Build (asan/ubsan)
+        run: cmake --build build --target texxy --verbose
+
+      - name: Sanitizer smoke test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1:strict_init_order=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ./build/src/texxy --help
+
+      - name: GUI smoke test (Xvfb)
+        env:
+          QT_QPA_PLATFORM: xcb
+        run: |
+          set +e
+          timeout 15s xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" ./build/src/texxy > /tmp/texxy-gui.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 124 ]; then
+            echo "texxy GUI stayed alive for timeout duration (expected)."
+            status=0
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "texxy GUI failed with status $status"
+            cat /tmp/texxy-gui.log || true
+            exit $status
+          fi
+          tail -n 40 /tmp/texxy-gui.log || true
+
+  valgrind:
+    name: Valgrind
+    runs-on: ubuntu-latest
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps (release-ish build + valgrind)
+        run: |
+          set -eux
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            clang \
+            lld \
+            libclang-rt-19-dev \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libhunspell-dev \
+            valgrind \
+            qt6-base-dev \
+            qtchooser \
+            qt6-base-dev-tools \
+            qt6-tools-dev \
+            qt6-tools-dev-tools \
+            qt6-svg-dev \
+            qt6-connectivity-dev \
+            qt6-declarative-dev \
+            qt6-location-dev \
+            qt6-charts-dev \
+            libqca-qt6-dev \
+            xvfb \
+            xauth \
+            x11-xserver-utils
+          if [ -d /usr/lib/qt6/bin ]; then
+            export PATH="/usr/lib/qt6/bin:${PATH}"
+          fi
+          if ! QT_PREFIX=$(qtpaths6 --install-prefix 2>/dev/null); then
+            QT_PREFIX="/usr/lib/qt6"
+          fi
+          if ! QT_PLUGIN_DIR=$(qtpaths6 --plugin-dir 2>/dev/null); then
+            QT_PLUGIN_DIR="${QT_PREFIX}/plugins"
+          fi
+          if ! QT_QML_DIR=$(qtpaths6 --qmldir 2>/dev/null); then
+            QT_QML_DIR="${QT_PREFIX}/qml"
+          fi
+          export QT_PLUGIN_PATH="${QT_PLUGIN_DIR}"
+          export QML2_IMPORT_PATH="${QT_QML_DIR}"
+          if [ -d "${QT_PREFIX}/lib/cmake" ]; then
+            export CMAKE_PREFIX_PATH="${QT_PREFIX}/lib/cmake:${CMAKE_PREFIX_PATH:-}"
+          fi
+          if [ -d /usr/lib/x86_64-linux-gnu/cmake ]; then
+            export CMAKE_PREFIX_PATH="/usr/lib/x86_64-linux-gnu/cmake:${CMAKE_PREFIX_PATH:-}"
+          fi
+          dpkg -l | grep -E 'qt6|icu|hunspell' || true
+          which uic
+          uic -v || true
+
+      - name: Configure build (RelWithDebInfo)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld"
+
+      - name: Build
+        run: cmake --build build --target texxy --verbose
+
+      - name: Valgrind smoke test
+        run: |
+          valgrind --tool=memcheck --leak-check=full --error-exitcode=1 \
+            ./build/src/texxy --help

@@ -1,0 +1,3021 @@
+
+
+#include "highlighter.h"
+#include <QTextDocument>
+
+#include <algorithm>
+
+Q_DECLARE_METATYPE(QTextBlock)
+
+namespace Texxy {
+
+/* NOTE: It is supposed that a URL does not end with a punctuation mark, parenthesis, bracket or single-quotation mark.
+ */
+const QRegularExpression Highlighter::urlPattern(
+    "[A-Za-z0-9_\\-]+://((?!&quot;|&gt;|&lt;)[A-Za-z0-9_.+/"
+    "\\?\\=~&%#,;!@\\*\'\\-:\\(\\)\\[\\]])+(?<!\\.|\\?|!|:|;|,|\\(|\\)|\\[|\\]|\')|[A-Za-z0-9_.\\-]+@[A-Za-z0-9_\\-]+"
+    "\\.[A-Za-z0-9.]+(?<!\\.)");
+const QRegularExpression Highlighter::notePattern("\\b(NOTE|TODO|FIXME|WARNING)\\b");
+
+/*************************/
+// Here, the order of formatting is important because of overrides.
+Highlighter::Highlighter(QTextDocument* parent,
+                         const QString& lang,
+                         const QTextCursor& start,
+                         const QTextCursor& end,
+                         bool darkColorScheme,
+                         bool showWhiteSpace,
+                         bool showEndings,
+                         int whitespaceValue,
+                         const QHash<QString, QColor>& syntaxColors)
+    : QSyntaxHighlighter(parent) {
+    if (lang.isEmpty())
+        return;
+
+    if (showWhiteSpace || showEndings) {
+        QTextOption opt = document()->defaultTextOption();
+        QTextOption::Flags flags = opt.flags();
+        if (showWhiteSpace)
+            flags |= QTextOption::ShowTabsAndSpaces;
+        if (showEndings)
+            flags |=
+                QTextOption::ShowLineAndParagraphSeparators |
+                QTextOption::AddSpaceForLineAndParagraphSeparators  // never show the horizontal scrollbar on wrapping
+                | QTextOption::ShowDocumentTerminator;
+        opt.setFlags(flags);
+        document()->setDefaultTextOption(opt);
+    }
+
+    /* for highlighting next block inside highlightBlock() when needed */
+    qRegisterMetaType<QTextBlock>();
+
+    startCursor = start;
+    endCursor = end;
+    progLan = lang;
+    maxBlockSize_ = progLan == "html" ? 5000 : 10000;
+
+    hasQuotes_ = (progLan != "diff" && progLan != "log" && progLan != "desktop" && progLan != "config" &&
+                  progLan != "theme" && progLan != "openbox" && progLan != "changelog" && progLan != "url" &&
+                  progLan != "deb" && progLan != "m3u" && progLan != "LaTeX" && progLan != "troff");
+
+    /* whether multiLineQuote() should be used in a normal way */
+    multilineQuote_ = (hasQuotes_ && progLan != "xml"  // xmlQuotes() is used
+                       && progLan != "sh"              // SH_MultiLineQuote() is used
+                       && progLan != "css"             // cssHighlighter() is used
+                       && progLan != "pascal" && progLan != "srt" && progLan != "html" && progLan != "reST" &&
+                       progLan != "toml"       // Toml will be formated separately
+                       && progLan != "yaml");  // yaml will be formated separately
+
+    /* only for isQuoted() and multiLineQuote() (not used with JS, qml and perl) */
+    mixedQuotes_ =
+        (progLan == "c" || progLan == "cpp"         // single quotes can also show syntax errors
+         || progLan == "python" || progLan == "sh"  // not used in multiLineQuote()
+         || progLan == "makefile" || progLan == "cmake" || progLan == "xml"  // never used; xml is formatted separately
+         || progLan == "ruby" || progLan == "html"                           // not used in multiLineQuote()
+         || progLan == "scss" || progLan == "yaml" || progLan == "dart" || progLan == "go" || progLan == "php" ||
+         progLan == "toml");
+
+    quoteMark.setPattern("\"");  // the standard quote mark (always a single character but will be changed for Pascal)
+    singleQuoteMark.setPattern("\'");    // will be changed only for Go
+    mixedQuoteMark.setPattern("\"|\'");  // will be changed only for Go
+    backQuote.setPattern("`");
+    /* includes Perl's backquote operator and JavaScript's template literal */
+    mixedQuoteBackquote.setPattern("\"|\'|`");
+
+    HighlightingRule rule;
+
+    QColor Faded(whitespaceValue, whitespaceValue, whitespaceValue);
+    QColor TextColor, neutralColor, translucent;
+    if (syntaxColors.size() == 11) {
+        /* NOTE: All 11 + 1 colors should be valid, opaque and different from each other
+                 but we don't check them here because "Texxy::Config" gets them so. */
+        Blue = syntaxColors.value("function");
+        Magenta = syntaxColors.value("BuiltinFunction");
+        Red = syntaxColors.value("comment");
+        DarkGreen = syntaxColors.value("quote");
+        DarkMagenta = syntaxColors.value("type");
+        DarkBlue = syntaxColors.value("keyWord");
+        Brown = syntaxColors.value("number");
+        DarkRed = syntaxColors.value("regex");
+        Violet = syntaxColors.value("xmlElement");
+        Verda = syntaxColors.value("cssValue");
+        DarkYellow = syntaxColors.value("other");
+
+        QList<QColor> colors;
+        colors << Blue << Magenta << Red << DarkGreen << DarkMagenta << DarkBlue << Brown << DarkRed << Violet << Verda
+               << DarkYellow << Faded;
+
+        /* extra colors */
+        if (!darkColorScheme) {
+            TextColor = QColor(Qt::black);
+            neutralColor = QColor(1, 1, 1);
+            translucent = QColor(0, 0, 0, 190);  // for huge lines
+        }
+        else {
+            TextColor = QColor(Qt::white);
+            neutralColor = QColor(254, 254, 254);
+            translucent = QColor(255, 255, 255, 190);
+        }
+
+        int i = 0;
+        while (colors.contains(TextColor)) {
+            ++i;
+            if (!darkColorScheme)
+                TextColor = QColor(i, i, i);
+            else
+                TextColor = QColor(255 - i, 255 - i, 255 - i);
+        }
+        colors << TextColor;
+
+        while (colors.contains(neutralColor)) {
+            ++i;
+            if (!darkColorScheme)
+                neutralColor = QColor(i, i, i);
+            else
+                neutralColor = QColor(255 - i, 255 - i, 255 - i);
+        }
+        colors << neutralColor;
+
+        DarkGreenAlt = DarkGreen.lighter(101);
+        if (DarkGreenAlt == DarkGreen) {
+            DarkGreenAlt = QColor(DarkGreen.red() > 127 ? DarkGreen.red() - 1 : DarkGreen.red() + 1,
+                                  DarkGreen.green() > 127 ? DarkGreen.green() - 1 : DarkGreen.green() + 1,
+                                  DarkGreen.blue() > 127 ? DarkGreen.blue() - 1 : DarkGreen.blue() + 1);
+        }
+        while (colors.contains(DarkGreenAlt)) {
+            DarkGreenAlt = QColor(DarkGreen.red() > 127 ? DarkGreenAlt.red() - 1 : DarkGreenAlt.red() + 1,
+                                  DarkGreen.green() > 127 ? DarkGreenAlt.green() - 1 : DarkGreenAlt.green() + 1,
+                                  DarkGreen.blue() > 127 ? DarkGreenAlt.blue() - 1 : DarkGreenAlt.blue() + 1);
+        }
+    }
+    else  // built-in colors (this block is never reached but is kept for the sake of consistency)
+    {
+        if (!darkColorScheme) {
+            TextColor = QColor(Qt::black);
+            neutralColor = QColor(1, 1, 1);
+            Blue = QColor(Qt::blue);
+            DarkBlue = QColor(Qt::darkBlue);
+            Red = QColor(Qt::red);
+            DarkRed = QColor(150, 0, 0);
+            Verda = QColor(0, 110, 110);
+            DarkGreen = QColor(Qt::darkGreen);
+            DarkMagenta = QColor(Qt::darkMagenta);
+            Violet = QColor(126, 0, 230);  // #7e00e6
+            Brown = QColor(150, 85, 0);
+            DarkYellow = QColor(100, 100, 0);  // Qt::darkYellow is (180, 180, 0)
+            translucent = QColor(0, 0, 0, 190);
+        }
+        else {
+            TextColor = QColor(Qt::white);
+            neutralColor = QColor(254, 254, 254);
+            Blue = QColor(85, 227, 255);
+            DarkBlue = QColor(65, 154, 255);
+            Red = QColor(255, 120, 120);
+            DarkRed = QColor(255, 160, 0);
+            Verda = QColor(150, 255, 0);
+            DarkGreen = QColor(Qt::green);
+            DarkMagenta = QColor(255, 153, 255);
+            Violet = QColor(255, 255, 1);  // near Qt::yellow (= DarkYellow)
+            Brown = QColor(255, 205, 0);
+            DarkYellow = QColor(Qt::yellow);
+            translucent = QColor(255, 255, 255, 190);
+        }
+        Magenta = QColor(Qt::magenta);
+        DarkGreenAlt = DarkGreen.lighter(101);  // almost identical
+    }
+
+    mainFormat.setForeground(TextColor);
+    neutralFormat.setForeground(neutralColor);
+    whiteSpaceFormat.setForeground(Faded);
+    translucentFormat.setForeground(translucent);
+    translucentFormat.setFontItalic(true);
+
+    quoteFormat.setForeground(DarkGreen);
+    altQuoteFormat.setForeground(DarkGreen);
+    urlInsideQuoteFormat.setForeground(DarkGreen);
+    altQuoteFormat.setFontItalic(true);
+    urlInsideQuoteFormat.setFontItalic(true);
+    urlInsideQuoteFormat.setFontUnderline(true);
+    regexFormat.setForeground(DarkRed);
+
+    /*************************
+     * Functions and Numbers *
+     *************************/
+
+    /* there may be javascript inside html */
+    QString Lang = progLan == "html" ? "javascript" : progLan;
+
+    /* might be overridden by the keywords format */
+    if (progLan == "c" || progLan == "cpp" || progLan == "lua" || progLan == "python" || progLan == "php" ||
+        progLan == "dart" || progLan == "go" || progLan == "rust" || progLan == "java") {
+        QTextCharFormat ft;
+
+        /* numbers (including the exponential notation, binary, octal and hexadecimal literals) */
+        ft.setForeground(Brown);
+        if (progLan == "python")
+            rule.pattern.setPattern(
+                "(?<=^|[^\\w\\d\\.])("
+                "\\d*\\.\\d+|\\d+\\.|(\\d*\\.?\\d+|\\d+\\.)(e|E)(\\+|-)?\\d+"
+                "|"
+                "0[bB][01]+|0[xX][0-9a-fA-F]+"
+                "|"
+                "(0|[1-9]\\d*)(L|l)?"  // digits
+                ")(?=[^\\w\\d\\.]|$)");
+        else if (progLan == "java")
+            rule.pattern.setPattern(
+                "(?<=^|[^\\w\\d\\.])("
+                "(\\d*\\.\\d+|\\d+\\.)(L|l|F|f)?"
+                "|"
+                "(\\d*\\.?\\d+|\\d+\\.)(e|E)(\\+|-)?\\d+(F|f)?"
+                "|"
+                "0[xX]([0-9a-fA-F]*\\.?[0-9a-fA-F]+|[0-9a-fA-F]+\\.)(p|P)(\\+|-)?\\d+(F|f)?"
+                "|"
+                "([1-9]\\d*|0[0-7]*)(L|l|F|f)?|(0[xX][0-9a-fA-F]+|0[bB][01]+)(L|l)?"  // integer
+                ")(?=[^\\w\\d\\.]|$)");
+        else if (progLan == "rust")
+            rule.pattern.setPattern(
+                "\\b0(?:x[0-9a-fA-F_]+|o[0-7_]+|b[01_]+)(?:[iu](?:8|16|32|64|128|size)?)?\\b"  // hexadecimal, octal,
+                                                                                               // binary
+                "|"
+                "\\b[0-9][0-9_]*(?:(?:\\.[0-9][0-9_]*)?(?:[eE][\\+\\-]?[0-9_]+)?(?:f32|f64)?|(?:[iu](?:8|16|32|64|128|"
+                "size)?)"
+                "?)\\b");           // float, decimal
+        else if (progLan == "cpp")  // handled separately because of ' as separator
+            rule.pattern.setPattern(
+                "(?<=^|[^\\w\\d\\.])("
+                "((\\d*|\\d+(\'\\d+)*)\\.\\d+(\'\\d+)*|\\d+(\'\\d+)*\\.|(\\d*\\.?\\d+(\'\\d+)*|\\d+(\'\\d+)*\\.)(e|E)("
+                "\\+|-)?"
+                "\\d+(\'\\d+)*)(L|l|F|f)?"
+                "|"
+                "0[xX](([0-9a-fA-F]*|[0-9a-fA-F]+(\'[0-9a-fA-F]+)*)\\.?[0-9a-fA-F]+(\'[0-9a-fA-F]+)*|[0-9a-fA-F]+(\'[0-"
+                "9a-fA-"
+                "F]+)*\\.)(p|P)(\\+|-)?\\d+(L|l|F|f)?"
+                "|"
+                "([1-9]\\d*(\'\\d+)*|0[0-7]*(\'[0-7]+)*|0[xX][0-9a-fA-F]+(\'[0-9a-fA-F]+)*|0[bB][01]+(\'[01]+)*)(L|l|U|"
+                "u|UL|"
+                "ul|LU|lu|LL|ll|ULL|ull|uLL|LLU|llu)?"  // integer
+                ")(?=[^\\w\\d\\.]|$)");
+        else
+            rule.pattern.setPattern ("(?<=^|[^\\w\\d\\.])("
+                                     "(\\d*\\.\\d+|\\d+\\.|(\\d*\\.?\\d+|\\d+\\.)(e|E)(\\+|-)?\\d+)(L|l|F|f)?"
+                                     /*"|"
+                                     "0[xX]([0-9a-fA-F]*\\.[0-9a-fA-F]+|[0-9a-fA-F]+\\.)(L|l)?"*/ // hexadecimal floating literals need exponent
+                                     "|"
+                                     "0[xX]([0-9a-fA-F]*\\.?[0-9a-fA-F]+|[0-9a-fA-F]+\\.)(p|P)(\\+|-)?\\d+(L|l|F|f)?"
+                                     "|"
+                                     "([1-9]\\d*|0[0-7]*|0[xX][0-9a-fA-F]+|0[bB][01]+)(L|l|U|u|UL|ul|LL|ll|ULL|ull)?" // integer
+                                     ")(?=[^\\w\\d\\.]|$)");
+        rule.format = ft;
+        highlightingRules.append(rule);
+
+        /* POSIX signals */
+        ft.setForeground(DarkYellow);
+        rule.pattern.setPattern(
+            "\\b(SIGABRT|SIGIOT|SIGALRM|SIGVTALRM|SIGPROF|SIGBUS|SIGCHLD|SIGCONT|SIGFPE|SIGHUP|SIGILL|SIGINT|SIGKILL|"
+            "SIGPIPE|SIGPOLL|SIGRTMIN|SIGRTMAX|SIGQUIT|SIGSEGV|SIGSTOP|SIGSYS|SIGTERM|SIGTSTP|SIGTTIN|SIGTTOU|SIGTRAP|"
+            "SIGURG|SIGUSR1|SIGUSR2|SIGXCPU|SIGXFSZ|SIGWINCH)(?!(\\.|-|@|#|\\$))\\b");
+        rule.format = ft;
+        highlightingRules.append(rule);
+
+        ft.setFontItalic(true);
+        ft.setForeground(Blue);
+        /* before parentheses... */
+        rule.pattern.setPattern("\\b[A-Za-z0-9_]+(?=\\s*\\()");
+        rule.format = ft;
+        highlightingRules.append(rule);
+        /* ... but make exception for what comes after "#define" */
+        if (progLan == "c" || progLan == "cpp") {
+            rule.pattern.setPattern(
+                "^\\s*#\\s*define\\s+[^\"\']+"  // may contain slash but no quote
+                "(?=\\s*\\()");
+            rule.format = neutralFormat;
+            highlightingRules.append(rule);
+        }
+        else if (progLan == "python") {  // built-in functions
+            ft.setFontWeight(QFont::Bold);
+            ft.setForeground(Magenta);
+            rule.pattern.setPattern(
+                "\\b(abs|add|aiter|all|append|anext|any|apply|as_integer_ratio|ascii|basestring|bin|bit_length|bool|"
+                "breakpoint|buffer|bytearray|bytes|callable|c\\.conjugate|capitalize|center|chr|classmethod|clear|"
+                "close|cmp|"
+                "coerce|compile|complex|copy|count|critical|debug|decode|delattr|dict|difference|difference_update|dir|"
+                "discard|detach|divmod|encode|endswith|enumerate|error|eval|expandtabs|exception|exec|execfile|extend|"
+                "file|"
+                "fileno|filter|find|float|flush|format|fromhex|fromkeys|frozenset|get|getattr|globals|hasattr|hash|has_"
+                "key|"
+                "help|hex|id|index|info|input|insert|int|intern|intersection|intersection_update|isalnum|isalpha|"
+                "isatty|"
+                "isdecimal|isdigit|isdisjoint|isinstance|islower|isnumeric|isspace|issubclass|issubset|istitle|"
+                "issuperset|"
+                "items|iter|iteritems|iterkeys|itervalues|isupper|is_integer|join|keys|len|list|ljust|locals|log|long|"
+                "lower|"
+                "lstrip|map|max|memoryview|min|next|object|oct|open|ord|partition|pop|popitem|pow|print|property|range|"
+                "raw_"
+                "input|read|readable|readline|readlines|reduce|reload|remove|replace|repr|reverse|reversed|rfind|"
+                "rindex|"
+                "rjust|rpartition|round|rsplit|rstrip|run|seek|seekable|set|setattr|slice|sort|sorted|split|splitlines|"
+                "staticmethod|startswith|str|strip|sum|super|symmetric_difference|symmetric_difference_update|swapcase|"
+                "tell|"
+                "title|translate|truncate|tuple|type|unichr|unicode|union|update|upper|values|vars|viewitems|viewkeys|"
+                "viewvalues|warning|writable|write|writelines|xrange|zip|zfill|(__(abs|add|aenter|aiter|aexit|and|"
+                "anext|"
+                "await|bytes|call|cmp|coerce|complex|contains|del|delattr|delete|delitem|delslice|dir|div|divmod|enter|"
+                "eq|"
+                "exit|float|floordiv|format|ge|get|getattr|getattribute|getitem|getslice|gt|hash|hex|iadd|iand|idiv|"
+                "ifloordiv|ilshift|invert|imod|import|imul|init|instancecheck|index|int|ior|ipow|irshift|isub|iter|"
+                "itruediv|"
+                "ixor|le|len|long|lshift|lt|missing|mod|mul|ne|neg|next|new|nonzero|oct|or|pos|pow|radd|rand|rcmp|rdiv|"
+                "rdivmod|repr|reversed|rfloordiv|rlshift|rmod|rmul|ror|rpow|rshift|rsub|rrshift|rtruediv|rxor|set|"
+                "setattr|"
+                "setitem|setslice|str|sub|subclasses|subclasscheck|truediv|unicode|xor)__))(?=\\s*\\()");
+            rule.format = ft;
+            highlightingRules.append(rule);
+        }
+    }
+    else if (Lang == "javascript" || progLan == "qml") {
+        QTextCharFormat ft;
+
+        /* before dot but not after it (might be overridden by keywords) */
+        ft.setForeground(Blue);
+        ft.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern(
+            "(?<![A-Za-z0-9_\\$\\.])\\s*[A-Za-z0-9_\\$]*[A-Za-z][A-Za-z0-9_\\$]*\\s*(?=\\.\\s*[A-Za-z0-9_\\$]*[A-Za-z]["
+            "A-"
+            "Za-z0-9_\\$]*)");  // "(?<![A-Za-z0-9_\\$])[A-Za-z0-9_\\$]+\\s*(?=\\.)"
+        rule.format = ft;
+        highlightingRules.append(rule);
+
+        /* before parentheses */
+        ft.setFontWeight(QFont::Normal);
+        ft.setFontItalic(true);
+        rule.pattern.setPattern("(?<![A-Za-z0-9_\\$])[A-Za-z0-9_\\$]*[A-Za-z][A-Za-z0-9_\\$]*(?=\\s*\\()");
+        rule.format = ft;
+        highlightingRules.append(rule);
+
+        ft.setFontItalic(false);
+        ft.setFontWeight(QFont::Bold);
+        ft.setForeground(Magenta);
+        rule.pattern.setPattern("\\b(?<!(@|#|\\$))(export|from|import|as)(?!(@|#|\\$|(\\s*:)))\\b");
+        rule.format = ft;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "troff") {
+        QTextCharFormat troffFormat;
+
+        troffFormat.setForeground(Blue);
+        rule.pattern.setPattern("^\\.\\s*[a-zA-Z]+");
+        rule.format = troffFormat;
+        highlightingRules.append(rule);
+
+        troffFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern("^\\.\\s*[a-zA-Z]+\\K.*");
+        rule.format = troffFormat;
+        highlightingRules.append(rule);
+
+        /* numbers */
+        troffFormat.setForeground(Brown);
+        rule.pattern.setPattern(
+            "(?<=^|[^\\w\\d@#\\$\\.])((\\d*\\.?\\d+|\\d+\\.)((e|E)(\\+|-)?\\d+)?|0[xX][0-9a-fA-F]+)(?=[^\\d\\.]|$)");
+        rule.format = troffFormat;
+        highlightingRules.append(rule);
+
+        /* meaningful escapes */
+        troffFormat.setForeground(DarkGreen);
+        rule.pattern.setPattern(
+            "\\\\(e|'|`|-|\\s|0|\\||\\^|&|\\!|\\\\\\$\\d+|%|\\(\\w{2}|\\\\\\*\\w|\\*\\(\\w{2}|a|b(?='\\w)|c|d|D|f(\\w|"
+            "\\("
+            "\\w{2})|(h|H)(?='\\d)|(j|k)\\w|l|L|n(\\w|\\(\\w{2})|o|p|r|s|S(?='\\d)|t|u|v(?='\\d)|w|x|zc|\\{|\\})");
+        rule.format = troffFormat;
+        highlightingRules.append(rule);
+
+        /* other escapes */
+        troffFormat.setForeground(Violet);
+        rule.pattern.setPattern(
+            "\\\\([^e'`\\-\\s0\\|\\^&\\!\\\\%\\(\\*abcdDfhHjklLnoprsStuvwxz\\{\\}]|\\((?!\\w{2})|\\\\(?!\\$\\d)|\\*(?!"
+            "\\("
+            "\\w{2})|b(?!'\\w)|(f|j|k|n)(?!\\w)|(f|n)(?!\\(\\w{2})|(h|H)(?!'\\d)|(S|v)(?!'\\d)|z(?!c))");
+        rule.format = troffFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "LaTeX") {
+        codeBlockFormat.setForeground(DarkMagenta);
+
+        /* commands */
+        QTextCharFormat laTexFormat;
+        laTexFormat.setForeground(Blue);
+        rule.pattern.setPattern("\\\\([a-zA-Z]+|[^a-zA-Z\\(\\)\\[\\]])");
+        rule.format = laTexFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "pascal") {
+        /* before parentheses */
+        QTextCharFormat pascalFormat;
+        pascalFormat.setFontItalic(true);
+        pascalFormat.setForeground(Blue);
+        rule.pattern.setPattern("\\b(?<!(@|#|\\$))[A-Za-z0-9_]+(?=\\s*\\()");
+        rule.format = pascalFormat;
+        highlightingRules.append(rule);
+    }
+
+    /**********************
+     * Keywords and Types *
+     **********************/
+
+    /* keywords */
+    QTextCharFormat keywordFormat;
+    /* bash extra keywords */
+    if (progLan == "sh" || progLan == "makefile" || progLan == "cmake") {
+        if (progLan == "cmake") {
+            keywordFormat.setForeground(Brown);
+            rule.pattern.setPattern("\\$\\{\\s*[A-Za-z0-9_.+/\\?#\\-:]*\\s*\\}");
+            rule.format = keywordFormat;
+            highlightingRules.append(rule);
+
+            /* projects (may be overridden by CMAKE keywords below it) */
+            keywordFormat.setForeground(Blue);
+            rule.pattern.setPattern(
+                "(?<=^|\\(|\\s)[A-Za-z0-9_]+(_BINARY_DIR|_SOURCE_DIR|_VERSION|_VERSION_MAJOR|_VERSION_MINOR|_VERSION_"
+                "PATCH|_"
+                "VERSION_TWEAK|_SOVERSION)(?!(\\.|-|@|#|\\$))\\b");
+            rule.format = keywordFormat;
+            highlightingRules.append(rule);
+
+            /*
+               previously, the first six patterns were started with:
+               ((^\\s*|[\\(\\);&`\\|{}!=^]+\\s*|(?<=~|\\.)+\\s+)((if|then|elif|elseif|else|fi|while|do|done|esac)\\s+)*)
+               instead of: (?<=^|\\(|\\s)
+            */
+            keywordFormat.setForeground(DarkBlue);
+            rule.pattern.setPattern(
+                "(?<=^|\\(|\\s)(CMAKE_ARGC|CMAKE_ARGV0|CMAKE_ARGS|CMAKE_AR|CMAKE_BINARY_DIR|CMAKE_BUILD_TOOL|CMAKE_"
+                "CACHE_"
+                "ARGS|CMAKE_CACHE_DEFAULT_ARGS|CMAKE_CACHEFILE_DIR|CMAKE_CACHE_MAJOR_VERSION|CMAKE_CACHE_MINOR_VERSION|"
+                "CMAKE_"
+                "CACHE_PATCH_VERSION|CMAKE_CFG_INTDIR|CMAKE_COMMAND|CMAKE_CROSSCOMPILING|CMAKE_CTEST_COMMAND|CMAKE_"
+                "CURRENT_"
+                "BINARY_DIR|CMAKE_CURRENT_LIST_DIR|CMAKE_CURRENT_LIST_FILE|CMAKE_CURRENT_LIST_LINE|CMAKE_CURRENT_"
+                "SOURCE_DIR|"
+                "CMAKE_DL_LIBS|CMAKE_EDIT_COMMAND|CMAKE_EXECUTABLE_SUFFIX|CMAKE_EXTRA_GENERATOR|CMAKE_EXTRA_SHARED_"
+                "LIBRARY_"
+                "SUFFIXES|CMAKE_GENERATOR|CMAKE_GENERATOR_INSTANCE|CMAKE_GENERATOR_PLATFORM|CMAKE_GENERATOR_TOOLSET|"
+                "CMAKE_"
+                "HOME_DIRECTORY|CMAKE_IMPORT_LIBRARY_PREFIX|CMAKE_IMPORT_LIBRARY_SUFFIX|CMAKE_JOB_POOL_COMPILE|CMAKE_"
+                "JOB_"
+                "POOL_LINK|CMAKE_LINK_LIBRARY_SUFFIX|CMAKE_MAJOR_VERSION|CMAKE_MAKE_PROGRAM|CMAKE_MINIMUM_REQUIRED_"
+                "VERSION|"
+                "CMAKE_MINOR_VERSION|CMAKE_PARENT_LIST_FILE|CMAKE_PATCH_VERSION|CMAKE_PROJECT_NAME|CMAKE_RANLIB|CMAKE_"
+                "ROOT|"
+                "CMAKE_SCRIPT_MODE_FILE|CMAKE_SHARED_LIBRARY_PREFIX|CMAKE_SHARED_LIBRARY_SUFFIX|CMAKE_SHARED_MODULE_"
+                "PREFIX|"
+                "CMAKE_SHARED_MODULE_SUFFIX|CMAKE_SIZEOF_VOID_P|CMAKE_SKIP_INSTALL_RULES|CMAKE_SKIP_RPATH|CMAKE_SOURCE_"
+                "DIR|"
+                "CMAKE_STANDARD_LIBRARIES|CMAKE_STATIC_LIBRARY_PREFIX|CMAKE_STATIC_LIBRARY_SUFFIX|CMAKE_TOOLCHAIN_FILE|"
+                "CMAKE_"
+                "TWEAK_VERSION|CMAKE_VERBOSE_MAKEFILE|CMAKE_VERSION|CMAKE_VS_DEVENV_COMMAND|CMAKE_VS_INTEL_Fortran_"
+                "PROJECT_"
+                "VERSION|CMAKE_VS_MSBUILD_COMMAND|CMAKE_VS_MSDEV_COMMAND|CMAKE_VS_PLATFORM_TOOLSETCMAKE_XCODE_PLATFORM_"
+                "TOOLSET|PROJECT_BINARY_DIR|PROJECT_NAME|PROJECT_SOURCE_DIR|PROJECT_VERSION|PROJECT_VERSION_MAJOR|"
+                "PROJECT_"
+                "VERSION_MINOR|PROJECT_VERSION_PATCH|PROJECT_VERSION_TWEAK|BUILD_SHARED_LIBS|CMAKE_ABSOLUTE_"
+                "DESTINATION_"
+                "FILES|CMAKE_APPBUNDLE_PATH|CMAKE_AUTOMOC_RELAXED_MODE|CMAKE_BACKWARDS_COMPATIBILITY|CMAKE_BUILD_TYPE|"
+                "CMAKE_"
+                "COLOR_MAKEFILE|CMAKE_CONFIGURATION_TYPES|CMAKE_DEBUG_TARGET_PROPERTIES|CMAKE_ERROR_DEPRECATED|CMAKE_"
+                "ERROR_"
+                "ON_ABSOLUTE_INSTALL_DESTINATION|CMAKE_SYSROOT|CMAKE_FIND_LIBRARY_PREFIXES|CMAKE_FIND_LIBRARY_SUFFIXES|"
+                "CMAKE_"
+                "FIND_NO_INSTALL_PREFIX|CMAKE_FIND_PACKAGE_WARN_NO_MODULE|CMAKE_FIND_ROOT_PATH|CMAKE_FIND_ROOT_PATH_"
+                "MODE_"
+                "INCLUDE|CMAKE_FIND_ROOT_PATH_MODE_LIBRARY|CMAKE_FIND_ROOT_PATH_MODE_PACKAGE|CMAKE_FIND_ROOT_PATH_MODE_"
+                "PROGRAM|CMAKE_FRAMEWORK_PATH|CMAKE_IGNORE_PATH|CMAKE_INCLUDE_PATH|CMAKE_INCLUDE_DIRECTORIES_BEFORE|"
+                "CMAKE_"
+                "INCLUDE_DIRECTORIES_PROJECT_BEFORE|CMAKE_INSTALL_DEFAULT_COMPONENT_NAME|CMAKE_INSTALL_PREFIX|CMAKE_"
+                "INSTALL_"
+                "PREFIX_INITIALIZED_TO_DEFAULT|CMAKE_LIBRARY_PATH|CMAKE_MFC_FLAG|CMAKE_MODULE_PATH|CMAKE_NOT_USING_"
+                "CONFIG_"
+                "FLAGS|CMAKE_PREFIX_PATH|CMAKE_PROGRAM_PATH|CMAKE_SKIP_INSTALL_ALL_DEPENDENCY|CMAKE_STAGING_PREFIX|"
+                "CMAKE_"
+                "SYSTEM_IGNORE_PATH|CMAKE_SYSTEM_INCLUDE_PATH|CMAKE_SYSTEM_LIBRARY_PATH|CMAKE_SYSTEM_PREFIX_PATH|CMAKE_"
+                "SYSTEM_PROGRAM_PATH|CMAKE_USER_MAKE_RULES_OVERRIDE|CMAKE_WARN_DEPRECATED|CMAKE_WARN_ON_ABSOLUTE_"
+                "INSTALL_"
+                "DESTINATION|BORLAND|CMAKE_CL_64|CMAKE_COMPILER_2005|CMAKE_HOST_APPLE|CMAKE_HOST_SYSTEM_NAME|CMAKE_"
+                "HOST_"
+                "SYSTEM_PROCESSOR|CMAKE_HOST_SYSTEM|CMAKE_HOST_SYSTEM_VERSION|CMAKE_HOST_UNIX|CMAKE_HOST_WIN32|CMAKE_"
+                "LIBRARY_"
+                "ARCHITECTURE_REGEX|CMAKE_LIBRARY_ARCHITECTURE|CMAKE_OBJECT_PATH_MAX|CMAKE_SYSTEM_NAME|CMAKE_SYSTEM_"
+                "PROCESSOR|CMAKE_SYSTEM|CMAKE_SYSTEM_VERSION|ENV|MSVC10|MSVC11|MSVC12|MSVC60|MSVC70|MSVC71|MSVC80|"
+                "MSVC90|"
+                "MSVC_IDE|MSVC|MSVC_VERSION|XCODE_VERSION|CMAKE_ARCHIVE_OUTPUT_DIRECTORY|CMAKE_AUTOMOC_MOC_OPTIONS|"
+                "CMAKE_"
+                "AUTOMOC|CMAKE_AUTORCC|CMAKE_AUTORCC_OPTIONS|CMAKE_AUTOUIC|CMAKE_AUTOUIC_OPTIONS|CMAKE_BUILD_WITH_"
+                "INSTALL_"
+                "RPATH|CMAKE_DEBUG_POSTFIX|CMAKE_EXE_LINKER_FLAGS|CMAKE_Fortran_FORMAT|CMAKE_Fortran_MODULE_DIRECTORY|"
+                "CMAKE_"
+                "GNUtoMS|CMAKE_INCLUDE_CURRENT_DIR_IN_INTERFACE|CMAKE_INCLUDE_CURRENT_DIR|CMAKE_INSTALL_NAME_DIR|CMAKE_"
+                "INSTALL_RPATH|CMAKE_INSTALL_RPATH_USE_LINK_PATH|CMAKE_LIBRARY_OUTPUT_DIRECTORY|CMAKE_LIBRARY_PATH_"
+                "FLAG|"
+                "CMAKE_LINK_DEF_FILE_FLAG|CMAKE_LINK_DEPENDS_NO_SHARED|CMAKE_LINK_INTERFACE_LIBRARIES|CMAKE_LINK_"
+                "LIBRARY_"
+                "FILE_FLAG|CMAKE_LINK_LIBRARY_FLAG|CMAKE_MACOSX_BUNDLE|CMAKE_MACOSX_RPATH|CMAKE_MODULE_LINKER_FLAGS|"
+                "CMAKE_NO_"
+                "BUILTIN_CHRPATH|CMAKE_NO_SYSTEM_FROM_IMPORTED|CMAKE_OSX_ARCHITECTURES|CMAKE_OSX_DEPLOYMENT_TARGET|"
+                "CMAKE_OSX_"
+                "SYSROOT|CMAKE_PDB_OUTPUT_DIRECTORY|CMAKE_POSITION_INDEPENDENT_CODE|CMAKE_RUNTIME_OUTPUT_DIRECTORY|"
+                "CMAKE_"
+                "SHARED_LINKER_FLAGS|CMAKE_SKIP_BUILD_RPATH|CMAKE_SKIP_INSTALL_RPATH|CMAKE_STATIC_LINKER_FLAGS|CMAKE_"
+                "TRY_"
+                "COMPILE_CONFIGURATION|CMAKE_USE_RELATIVE_PATHS|CMAKE_VISIBILITY_INLINES_HIDDEN|CMAKE_WIN32_EXECUTABLE|"
+                "EXECUTABLE_OUTPUT_PATH|LIBRARY_OUTPUT_PATH|CMAKE_Fortran_MODDIR_DEFAULT|CMAKE_Fortran_MODDIR_FLAG|"
+                "CMAKE_"
+                "Fortran_MODOUT_FLAG|CMAKE_INTERNAL_PLATFORM_ABI)(?!(\\.|-|@|#|\\$))\\b");
+            rule.format = keywordFormat;
+            highlightingRules.append(rule);
+
+            rule.pattern.setPattern(
+                "(?<=^|\\(|\\s)(CMAKE_DISABLE_FIND_PACKAGE_|CMAKE_EXE_LINKER_FLAGS_|CMAKE_MAP_IMPORTED_CONFIG_|CMAKE_"
+                "MODULE_"
+                "LINKER_FLAGS_|CMAKE_PDB_OUTPUT_DIRECTORY_|CMAKE_SHARED_LINKER_FLAGS_|CMAKE_STATIC_LINKER_FLAGS_|CMAKE_"
+                "COMPILER_IS_GNU)[A-Za-z0-9_]+(?!(\\.|-|@|#|\\$))\\b");
+            highlightingRules.append(rule);
+
+            rule.pattern.setPattern(
+                "(?<=^|\\(|\\s)(CMAKE_)[A-Za-z0-9_]+(_POSTFIX|_VISIBILITY_PRESET|_ARCHIVE_APPEND|_ARCHIVE_CREATE|_"
+                "ARCHIVE_"
+                "FINISH|_COMPILE_OBJECT|_COMPILER_ABI|_COMPILER_ID|_COMPILER_LOADED|_COMPILER|_COMPILER_EXTERNAL_"
+                "TOOLCHAIN|_"
+                "COMPILER_TARGET|_COMPILER_VERSION|_CREATE_SHARED_LIBRARY|_CREATE_SHARED_MODULE|_CREATE_STATIC_LIBRARY|"
+                "_"
+                "FLAGS_DEBUG|_FLAGS_MINSIZEREL|_FLAGS_RELEASE|_FLAGS_RELWITHDEBINFO|_FLAGS|_IGNORE_EXTENSIONS|_"
+                "IMPLICIT_"
+                "INCLUDE_DIRECTORIES|_IMPLICIT_LINK_DIRECTORIES|_IMPLICIT_LINK_FRAMEWOR)(?!(\\.|-|@|#|\\$))\\b");
+            highlightingRules.append(rule);
+
+            rule.pattern.setPattern("(?<=^|\\(|\\s)(CMAKE_PROJECT_)[A-Za-z0-9_]+(_INCLUDE)(?!(\\.|-|@|#|\\$))\\b");
+            highlightingRules.append(rule);
+
+            /* platforms */
+            keywordFormat.setFontItalic(true);
+            rule.pattern.setPattern(
+                "(?<=^|\\(|\\s)(APPLE|CRLF|CYGWIN|DOS|HAIKU|LF|MINGW|MSYS|UNIX|WIN32)(?=$|\\)|\\s)");
+            rule.format = keywordFormat;
+            highlightingRules.append(rule);
+            keywordFormat.setFontItalic(false);
+
+            keywordFormat.setForeground(DarkMagenta);
+            rule.pattern.setPattern("(?<=^|\\(|\\s)(AND|OR|NOT)(?=$|\\s)");
+            rule.format = keywordFormat;
+            highlightingRules.append(rule);
+
+            rule.pattern.setPattern(
+                "(?<=^|\\(|\\s)(ABSOLUTE|AFTER|ALIAS|ALIASED_TARGET|ALL|ALWAYS|APPEND|ARG_VAR|ARGS|ARCHIVE|ATTACHED_"
+                "FILES|"
+                "ATTACHED_FILES_ON_FAIL|AUTHOR_WARNING|BEFORE|BINARY_DIR|BOOL|BRIEF_DOCS|BUNDLE|BYPRODUCTS|CACHE|"
+                "CACHED_"
+                "VARIABLE|CLEAR|CMAKE_FIND_ROOT_PATH_BOTH|COMP|COMMAND|COMMENT|COMPONENT|COMPONENTS|CONFIG|CONFIG_MODE|"
+                "CONFIGS|CONFIGURE_COMMAND|CONFIGURATIONS|COPY|COPYONLY|COMPATIBILITY|COST|CREATE_LINK|DEFAULT_MSG|"
+                "DEPENDS|"
+                "DEPENDEES|DEPENDERS|DEPRECATION|DESCRIPTION|DESTINATION|DIRECTORY|DIRECTORY_PERMISSIONS|DISABLED|"
+                "DISABLED_"
+                "FEATURES|DOC|DOWNLOAD|DOWNLOAD_COMMAND|DOWNLOAD_DIR|DOWNLOAD_NAME|DOWNLOAD_NO_EXTRACT|DOWNLOAD_NO_"
+                "PROGRESS|"
+                "ENABLED_FEATURES|ENCODING|ERROR_VARIABLE|ERROR_FILE|ERROR_QUIET|ERROR_STRIP_TRAILING_WHITESPACE|"
+                "ESCAPE_"
+                "QUOTES|EXACT|EXCLUDE|EXCLUDE_FROM_ALL|EXCLUDE_FROM_MAIN|EXPORT|EXPORT_LINK_INTERFACE_LIBRARIES|EXPORT_"
+                "NAME|"
+                "EXPORT_PROPERTIES|EXT|FAIL_MESSAGE|FALSE|FATAL_ERROR|FATAL_ON_MISSING_REQUIRED_PACKAGES|FILE_"
+                "PERMISSIONS|"
+                "FILENAME|FILEPATH|FILES|FILES_MATCHING|FIND|FILTER|FOLDER|FRAMEWORK|FORCE|FOUND_VAR|FULL_DOCS|"
+                "GENERATE|GET|"
+                "GLOB|GLOB_RECURSE|GLOBAL|GROUP_EXECUTE|GROUP_READ|GUARD|HANDLE_COMPONENTS|HINTS|IMMEDIATE|IMPLICIT_"
+                "DEPENDS|"
+                "IMPORTED|IN|INDEPENDENT_STEP_TARGETS|INCLUDE_QUIET_PACKAGES|INCLUDES|INPUT_FILE|INSERT|INSTALL|"
+                "INSTALL_"
+                "COMMAND|INSTALL_DIR|INSTALL_DESTINATION|INTERNAL|INTERFACE|JOIN|LABELS|LAST_EXT|LENGTH|LIBRARY|LIMIT|"
+                "LINK_"
+                "PRIVATE|LINK_PUBLIC|LOCK|LOG|LOG_DIR|MAIN_DEPENDENCY|MAKE_DIRECTORY|MEASUREMENT|MODULE|MODIFIED|"
+                "NAMELINK_"
+                "ONLY|NAMELINK_SKIP|NAMESPACE|NAME|NAME_WE|NAME_WLE|NAMES|NEWLINE_STYLE|NO_CHECK_REQUIRED_COMPONENTS_"
+                "MACRO|"
+                "NO_CMAKE_BUILDS_PATH|NO_CMAKE_ENVIRONMENT_PATH|NO_CMAKE_FIND_ROOT_PATH|NO_CMAKE_PACKAGE_REGISTRY|NO_"
+                "CMAKE_"
+                "PATH|NO_CMAKE_SYSTEM_PACKAGE_REGISTRY|NO_CMAKE_SYSTEM_PATH|NO_DEPENDS|NO_DEFAULT_PATH|NO_MODULE|NO_"
+                "POLICY_"
+                "SCOPE|NO_SET_AND_CHECK_MACRO|NO_SOURCE_PERMISSIONS|NO_SYSTEM_ENVIRONMENT_PATH|OBJECT|OFF|OFFSET|ON|"
+                "ONLY_"
+                "CMAKE_FIND_ROOT_PATH|OPTIONAL|OPTIONAL_PACKAGES_FOUND|OPTIONAL_PACKAGES_NOT_FOUND|OUTPUT_FILE|OUTPUT_"
+                "QUIET|"
+                "OUTPUT_STRIP_TRAILING_WHITESPACE|OUTPUT_VARIABLE|OWNER_EXECUTE|OWNER_READ|OWNER_WRITE|PATH|PACKAGES_"
+                "FOUND|"
+                "PACKAGES_NOT_FOUND|PACKAGE_VERSION_FILE|PARENT_SCOPE|PATHS|PATH_SUFFIXES|PATCH_COMMAND|PATH_VARS|"
+                "PATTERN|"
+                "PERMISSIONS|PKG_CONFIG_FOUND|PKG_CONFIG_EXECUTABLE|PKG_CONFIG_VERSION_STRING|PRE_BUILD|PRE_LINK|"
+                "PREFIX|POST_"
+                "BUILD|PRIVATE|PRIVATE_HEADER|PROGRAM|PROGRAM_ARGS|PROGRAMS|PROPERTY|PROPERTIES|PUBLIC|PUBLIC_HEADER|"
+                "PURPOSE|"
+                "QUIET|RANGE|READ|READ_SYMLINK|REALPATH|RECOMMENDED|RECOMMENDED_PACKAGES_FOUND|RECOMMENDED_PACKAGES_"
+                "NOT_"
+                "FOUND|REGEX|RELATIVE_PATH|RENAME|REMOVE|REMOVE_AT|REMOVE_DUPLICATES|REMOVE_RECURSE|REMOVE_ITEM|"
+                "REQUIRED|"
+                "REQUIRED_PACKAGES_FOUND|REQUIRED_PACKAGES_NOT_FOUND|REQUIRED_VARS|RESOURCE|REVERSE|RESULT_VARIABLE|"
+                "RESULTS_"
+                "VARIABLE|RUNTIME|RUNTIME_PACKAGES_FOUND|RUNTIME_PACKAGES_NOT_FOUND|RETURN_VALUE|SEND_ERROR|SHARED|"
+                "SIZE|SORT|"
+                "SOURCE|SOURCE_DIR|SOURCE_SUBDIR|SOURCES|SOVERSION|STAMP_DIR|STATIC|STATUS|STEP_TARGETS|STRING|STRINGS|"
+                "SUBLIST|SUFFIX|SYSTEM|TARGETS|TEST|TIMEOUT|TIMESTAMP|TMP_DIR|TO_CMAKE_PATH|TO_NATIVE_PATH|TOUCH|TOUCH_"
+                "NOCREATE|TRANSFORM|TRUE|TYPE|UNKNOWN|UPDATE_COMMAND|UPDATE_DISCONNECTED|UPLOAD|URL|URL_HASH|USES_"
+                "TERMINAL|"
+                "VAR|VARIABLE|VARIABLE_PREFIX|VERBATIM|VERSION|VERSION_HEADER|VERSION_VAR|WARNING|WHAT|WILL_FAIL|"
+                "WORKING_"
+                "DIRECTORY|WRITE)(?=$|\\)|\\s)");
+            highlightingRules.append(rule);
+
+            keywordFormat.setFontWeight(QFont::Bold);
+            keywordFormat.setFontItalic(true);
+            rule.pattern.setPattern(
+                "(?<=^|\\(|\\s)(@ONLY|DEFINED|EQUAL|EXISTS|GREATER|IS_ABSOLUTE|IS_NEWER_THAN|IS_SYMLINK|LESS|MATCHES|"
+                "STREQUAL|STRGREATER|STRLESS|VERSION_GREATER|VERSION_EQUAL|VERSION_LESS|AnyNewerVersion|ExactVersion|"
+                "SameMajorVersion)(?=$|\\)|\\s)");
+            rule.format = keywordFormat;
+            highlightingRules.append(rule);
+            keywordFormat.setFontItalic(false);
+        }
+        keywordFormat.setFontWeight(QFont::Bold);
+        keywordFormat.setForeground(Magenta);
+        rule.pattern.setPattern(
+            "((^\\s*|[\\(\\);&`\\|{}!=^]+\\s*|(?<=~|\\.)+\\s+)((if|then|elif|elseif|else|fi|while|do|done|esac)\\s+)*)"
+            "\\K(?"
+            "<!\\${)(sudo\\s+)?((kill|killall|torify|proxychains)\\s+)?(aclocal|aconnect|adduser|addgroup|aplay|apm|"
+            "apmsleep|apropos|apt|apt-get|ar|as|as86|aspell|autoconf|autoheader|automake|awk|basename|bash|bc|bison|"
+            "bsdtar|"
+            "bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2|bzip2recover|bzless|bzmore|cal|cat|chattr|cc|cd|"
+            "cfdisk|chfn|chgrp|chmod|chown|chroot|chkconfig|chsh|chvt|cksum|clang|clear|cmake|cmp|co|col|comm|coproc|"
+            "cp|"
+            "cpio|cpp|cron|crontab|csplit|curl|cut|cvs|date|dc|dcop|dd|ddrescue|deallocvt|df|diff|diff3|dig|dir|"
+            "dircolors|"
+            "dirname|dirs|dmesg|dnsdomainname|domainname|dpkg|du|dumpkeys|ed|egrep|eject|emacs|env|ethtool|expect|"
+            "expand|"
+            "expr|fbset|fdformat|fdisk|texxy|fgconsole|fgrep|file|find|finger|flex|fmt|fold|format|free|fsck|"
+            "ftp|"
+            "funzip|fuser|gawk|gc|gcc|gdb|getent|getkeycodes|getopt|gettext|gettextize|gio|git|gmake|gocr|gpg|grep|"
+            "groff|"
+            "groups|gs|gunzip|gzexe|gzip|head|hexdump|hostname|id|igawk|ifconfig|ifdown|ifup|import|install|java|javac|"
+            "jobs|join|kdialog|kfile|kill|killall|last|lastb|ld|ld86|ldd|less|lex|link|links|ln|loadkeys|loadunimap|"
+            "locate|"
+            "lockfile|logname|look|lp|lpc|lpr|lprint|lprintd|lprintq|lprm|ls|lsattr|lsmod|lsof|lynx|lzcat|lzcmp|lzdiff|"
+            "lzegrep|lzfgrep|lzgrep|lzless|lzma|lzmainfo|lzmore|m4|mail|make|makepkg|man|mapscrn|mesg|mkdir|mkfifo|"
+            "mkisofs|"
+            "mknod|mktemp|more|mount|mtools|mv|mmv|msgfmt|namei|nano|nasm|nawk|netstat|nice|nisdomainname|nl|nm|nm86|"
+            "nmap|"
+            "nohup|nop|nroff|nslookup|od|op|open|openvt|pacman|passwd|paste|patch|pathchk|pcregrep|pcretest|perl|"
+            "perror|"
+            "pgawk|pico|pidof|pine|ping|pkill|popd|pr|printcap|printenv|procmail|proxychains|prune|ps|psbook|psmerge|"
+            "psnup|"
+            "psresize|psselect|pstops|pstree|pwd|python|qarma|qmake((-qt)?[3-9])*|quota|quotacheck|quotactl|ram|rbash|"
+            "rcp|"
+            "rcs|readarray|readlink|reboot|red|rename|renice|remsync|resizecons|rev|rm|rmdir|rsync|ruby|sash|screen|"
+            "scp|"
+            "sdiff|sed|seq|setfont|setkeycodes|setleds|setmetamode|setserial|setterm|size|size86|sftp|sh|showkey|"
+            "shutdown|"
+            "shred|skill|sleep|slocate|slogin|snice|sort|sox|split|ssed|ssh|stat|strace|strings|strip|stty|su|sudo|"
+            "suidperl|sum|svn|symlink|sync|tac|tail|tar|tee|tempfile|time|touch|top|torify|traceroute|tr|troff|"
+            "truncate|"
+            "tsort|tty|type|ulimit|umask|umount|uname|unexpand|uniq|units|unlink|unlzma|unshar|unxz|unzip|updatedb|"
+            "updmap|"
+            "uptime|useradd|usermod|users|usleep|utmpdump|uuencode|uudecode|uuidgen|valgrind|vdir|vi|vim|vmstat|w|wall|"
+            "watch|wc|whatis|whereis|which|who|whoami|wget|write|xargs|xeyes|xhost|xmodmap|xset|xz|xzcat|yacc|yad|yes|"
+            "zcat|"
+            "zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew|zsh|zsoelim|zypper|7z)(?!(\\.|-|@|#|\\$)"
+            ")"
+            "\\b");
+        rule.format = keywordFormat;
+        highlightingRules.append(rule);
+    }
+    else
+        keywordFormat.setFontWeight(QFont::Bold);
+    keywordFormat.setForeground(DarkBlue);
+
+    /* types */
+    QTextCharFormat typeFormat;
+    typeFormat.setForeground(DarkMagenta);
+
+    const QStringList keywordPatterns = keywords(Lang);
+    for (const QString& pattern : keywordPatterns) {
+        rule.pattern.setPattern(pattern);
+        rule.format = keywordFormat;
+        highlightingRules.append(rule);
+    }
+
+    if (progLan == "qmake") {
+        QTextCharFormat qmakeFormat;
+        /* qmake test functions */
+        qmakeFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern(
+            "\\b(cache|CONFIG|contains|count|debug|defined|equals|error|eval|exists|export|files|for|greaterThan|if|"
+            "include|infile|isActiveConfig|isEmpty|isEqual|lessThan|load|log|message|mkpath|packagesExist|"
+            "prepareRecursiveTarget|qtCompileTest|qtHaveModule|requires|system|touch|unset|warning|write_file)(?=\\s*"
+            "\\()");
+        rule.format = qmakeFormat;
+        highlightingRules.append(rule);
+        /* qmake paths */
+        qmakeFormat.setForeground(Blue);
+        rule.pattern.setPattern("\\${1,2}([A-Za-z0-9_]+|\\[[A-Za-z0-9_]+\\]|\\([A-Za-z0-9_]+\\))");
+        rule.format = qmakeFormat;
+        highlightingRules.append(rule);
+    }
+
+    const QStringList typePatterns = types();
+    for (const QString& pattern : typePatterns) {
+        rule.pattern.setPattern(pattern);
+        rule.format = typeFormat;
+        highlightingRules.append(rule);
+    }
+
+    /***********
+     * Details *
+     ***********/
+
+    /* these are used for all comments */
+    commentFormat.setForeground(Red);
+    commentFormat.setFontItalic(true);
+    /* WARNING: This is also used by Fountain's synopses. */
+    noteFormat.setFontWeight(QFont::Bold);
+    noteFormat.setFontItalic(true);
+    noteFormat.setForeground(DarkRed);
+
+    /* these can also be used inside multiline comments */
+    urlFormat.setFontUnderline(true);
+    urlFormat.setForeground(Blue);
+    urlFormat.setFontItalic(true);
+
+    if (progLan == "c" || progLan == "cpp") {
+        QTextCharFormat cFormat;
+
+        /* Qt and Gtk+ specific classes */
+        cFormat.setFontWeight(QFont::Bold);
+        cFormat.setForeground(DarkMagenta);
+        if (progLan == "cpp")
+            rule.pattern.setPattern("\\bQ[A-Z][A-Za-z0-9]+(?!(\\.|-|@|#|\\$))\\b");
+        else
+            rule.pattern.setPattern("\\bG[A-Za-z]+(?!(\\.|-|@|#|\\$))\\b");
+        rule.format = cFormat;
+        highlightingRules.append(rule);
+
+        /* C++ std methods and Qt's global functions, enums and global colors */
+        if (progLan == "cpp") {
+            /*
+               The whole pattern of C++11 raw string literals is
+               R"(\bR"([^(]*)\(.*(?=\)\1"))"
+            */
+            cppLiteralStart.setPattern(R"(\bR"([^(]*)\()");
+            rawLiteralFormat = quoteFormat;
+            rawLiteralFormat.setFontWeight(QFont::Bold);
+
+            cFormat.setFontItalic(true);
+            rule.pattern.setPattern(
+                "std::[A-Za-z0-9_]+(?=\\s*\\()|\\bq(App|GuiApp)(?!(\\@|#|\\$))\\b|\\bq(Abs|Bound|Critical|Debug|Fatal|"
+                "FuzzyCompare|InstallMsgHandler|MacVersion|Max|Min|Round64|Round|Version|Warning|getenv|putenv|rand|"
+                "srand|"
+                "tTrId|unsetenv|_check_ptr|t_set_sequence_auto_mnemonic|t_symbian_exception2Error|t_symbian_"
+                "exception2LeaveL|"
+                "t_symbian_throwIfError)(?!(\\.|-|@|#|\\$))\\b");
+            rule.format = cFormat;
+            highlightingRules.append(rule);
+
+            cFormat.setFontWeight(QFont::Normal);
+            rule.pattern.setPattern("\\bQt\\s*::\\s*[A-Z][A-Za-z0-9_]+(?!(\\.|-|@|#|\\$))\\b");
+            rule.format = cFormat;
+            highlightingRules.append(rule);
+            cFormat.setFontWeight(QFont::Bold);
+            cFormat.setFontItalic(false);
+
+            cFormat.setForeground(Magenta);
+            rule.pattern.setPattern(
+                "\\bQt\\s*::\\s*(white|black|red|darkRed|green|darkGreen|blue|darkBlue|cyan|darkCyan|magenta|"
+                "darkMagenta|"
+                "yellow|darkYellow|gray|darkGray|lightGray|transparent|color0|color1)(?!(\\.|-|@|#|\\$))\\b");
+            rule.format = cFormat;
+            highlightingRules.append(rule);
+        }
+
+        /* preprocess */
+        cFormat.setForeground(Blue);
+        rule.pattern.setPattern(
+            "^\\s*#\\s*(define|elif|error|if|ifdef|ifndef|include|pragma|undef)\\s|^\\s*#\\s*endif\\b|^\\s*#\\s*else(?!"
+            "(\\."
+            "|-|@|#|\\$))\\b");
+        rule.format = cFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "python") {
+        QTextCharFormat pFormat;
+        pFormat.setFontWeight(QFont::Bold);
+        pFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern("\\bself(?!(@|\\$))\\b");
+        rule.format = pFormat;
+        highlightingRules.append(rule);
+    }
+    else if (Lang == "javascript" || progLan == "qml") {
+        QTextCharFormat ft;
+
+        /* after dot (may override keywords) */
+        ft.setForeground(Blue);
+        ft.setFontItalic(true);
+        rule.pattern.setPattern(
+            "(?<=\\.)\\s*[A-Za-z0-9_\\$]*[A-Za-z][A-Za-z0-9_\\$]*(?=\\s*\\()");  // before parentheses
+        rule.format = ft;
+        highlightingRules.append(rule);
+        ft.setFontItalic(false);
+        rule.pattern.setPattern(
+            "(?<=\\.)\\s*[A-Za-z0-9_\\$]*[A-Za-z][A-Za-z0-9_\\$]*(?!\\s*\\()(?![A-Za-z0-9_\\$])");  // not before
+                                                                                                    // parentheses
+        rule.format = ft;
+        highlightingRules.append(rule);
+
+        /* numbers */
+        ft.setForeground(Brown);
+        rule.pattern.setPattern(
+            "(?<=^|[^\\w\\d@#\\$\\.])("
+            "\\d*\\.\\d+|\\d+\\.|(\\d*\\.?\\d+|\\d+\\.)(e|E)(\\+|-)?\\d+"
+            "|"
+            "([1-9]\\d*|0(o|O)[0-7]+|0[xX][0-9a-fA-F]+|0[bB][01]+)n?"
+            "|"
+            "0[0-7]*"
+            ")(?=[^\\w\\d\\.]|$)");
+        rule.format = ft;
+        highlightingRules.append(rule);
+
+        if (progLan == "qml") {
+            ft.setFontWeight(QFont::Bold);
+            ft.setForeground(DarkMagenta);
+            rule.pattern.setPattern(
+                "\\b(?<!(@|#|\\$))(Qt([A-Za-z]+)?|Accessible|AnchorAnimation|AnchorChanges|AnimatedImage|"
+                "AnimatedSprite|"
+                "Animation|AnimationController|Animator|Behavior|Binding|Blur|BorderImage|Canvas|CanvasGradient|"
+                "CanvasImageData|CanvasPixelArray|ColorAnimation|Colorize|Column|Component|Connections|Context2D|"
+                "DateTimeFormatter|DoubleValidator|Drag|DragEvent|DropArea|DropShadow|EaseFollow|EnterKey|Flickable|"
+                "Flipable|"
+                "Flow|FocusScope|FontLoader|FontMetrics|Gradient|GradientStop|Grid|GridMesh|GridView|Image|"
+                "IntValidator|Item|"
+                "ItemGrabResult|KeyEvent|KeyNavigation|Keys|LayoutItem|LayoutMirroring|ListModel|ListElement|ListView|"
+                "Loader|"
+                "Matrix4x4|MouseArea|MouseEvent|MouseRegion|MultiPointTouchArea|NumberAnimation|NumberFormatter|"
+                "Opacity|"
+                "OpacityAnimator|OpenGLInfo|ParallelAnimation|ParentAction|ParentAnimation|ParentChange|"
+                "ParticleMotionGravity|ParticleMotionLinear|ParticleMotionWander|Particles|Path|PathAnimation|PathArc|"
+                "PathAttribute|PathCubic|PathCurve|PathElement|PathInterpolator|PathLine|PathPercent|PathQuad|PathSvg|"
+                "PathView|PauseAnimation|PinchArea|PinchEvent|Positioner|PropertyAction|PropertyAnimation|"
+                "PropertyChanges|"
+                "Rectangle|RegExpValidator|Repeater|Rotation|RotationAnimation|RotationAnimator|Row|Scale|"
+                "ScaleAnimator|"
+                "ScriptAction|SequentialAnimation|ShaderEffect|ShaderEffectSource|Shortcut|SmoothedAnimation|"
+                "SpringAnimation|"
+                "Sprite|SpriteSequence|State|StateChangeScript|StateGroup|SystemPalette|Text|TextEdit|TextInput|"
+                "TextMetrics|"
+                "TouchPoint|Transform|Transition|Translate|UniformAnimator|Vector3dAnimation|ViewTransition|WheelEvent|"
+                "XAnimator|YAnimator|CloseEvent|ColorDialog|ColumnLayout|Dialog|FileDialog|FontDialog|GridLayout|"
+                "Layout|"
+                "MessageDialog|RowLayout|StackLayout|LocalStorage|Screen|SignalSpy|TestCase|Window|XmlListModel|"
+                "XmlRole|"
+                "Action|ApplicationWindow|BusyIndicator|Button|Calendar|CheckBox|ComboBox|ExclusiveGroup|GroupBox|"
+                "Label|Menu|"
+                "MenuBar|MenuItem|MenuSeparator|ProgressBar|RadioButton|Script|ScrollView|Slider|SpinBox|SplitView|"
+                "Stack|"
+                "StackView|StackViewDelegate|StatusBar|Switch|Tab|TabView|TableView|TableViewColumn|TextArea|TextField|"
+                "ToolBar|ToolButton|TreeView|Affector|Age|AngleDirection|Attractor|CumulativeDirection|CustomParticle|"
+                "Direction|EllipseShape|Emitter|Friction|GraphicsObjectContainer|Gravity|GroupGoal|ImageParticle|"
+                "ItemParticle|LineShape|MaskShape|Particle|ParticleGroup|ParticlePainter|ParticleSystem|PointDirection|"
+                "RectangleShape|Shape|SpringFollow|SpriteGoal|TargetDirection|TrailEmitter|Turbulence|VisualItemModel|"
+                "Wander|"
+                "WebView|Timer)(?!(\\-|@|#|\\$))\\b");
+            rule.format = ft;
+            highlightingRules.append(rule);
+        }
+    }
+    else if (progLan == "xml") {
+        /* NOTE: Here, "<!DOCTYPE " is intentionally not included while "<?xml" is included. */
+        xmlLt.setPattern(
+            "<(?=(/?(?!\\.|\\-)[A-Za-z0-9_\\.\\-:]+|\\?(xml|XML)|!(ENTITY|ELEMENT|ATTLIST|NOTATION))(\\s|$|/?>))");
+        xmlGt.setPattern(">");
+
+        errorFormat.setForeground(Red);
+        errorFormat.setFontUnderline(true);
+
+        /* URLs */
+        rule.pattern = urlPattern;
+        rule.format = urlFormat;
+        highlightingRules.append(rule);
+
+        /* ampersand strings */
+        rule.pattern.setPattern("&(#[0-9]+|#(x|X)[a-fA-F0-9]+|[\\w\\.\\-:]+);");
+        rule.format = noteFormat;  // a format that can be overridden below
+        highlightingRules.append(rule);
+
+        /* bad ampersands */
+        rule.pattern.setPattern("&(?!(#[0-9]+|#(x|X)[a-fA-F0-9]+|[\\w\\.\\-:]+);)");
+        rule.format = errorFormat;
+        highlightingRules.append(rule);
+
+        QTextCharFormat xmlElementFormat;
+        xmlElementFormat.setFontWeight(QFont::Bold);
+        xmlElementFormat.setForeground(Violet);
+        /* after </ or before /> */
+        rule.pattern.setPattern(
+            "(<|&lt;)(/?(?!\\.|\\-)[A-Za-z0-9_\\.\\-:]+|!(DOCTYPE|ENTITY|ELEMENT|ATTLIST|NOTATION))(\\s|$|/?(>|&gt;))|/"
+            "?(>|&gt;)");
+        rule.format = xmlElementFormat;
+        highlightingRules.append(rule);
+
+        QTextCharFormat xmlAttributeFormat;
+        xmlAttributeFormat.setFontItalic(true);
+        xmlAttributeFormat.setForeground(Blue);
+        /* before = */
+        rule.pattern.setPattern("(^|\\s)[A-Za-z0-9_\\.\\-:]+(?=\\s*\\=\\s*(\"|&quot;|\'))");
+        rule.format = xmlAttributeFormat;
+        highlightingRules.append(rule);
+
+        /* <?xml ... ?> */
+        rule.pattern.setPattern("<\\?[\\w\\-:]*(?=\\s|$)|\\?>");
+        rule.format = keywordFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "changelog") {
+        /* before colon */
+        rule.pattern.setPattern("^\\s+\\*\\s+[^:]+:(?!(:|//))");
+        rule.format = keywordFormat;
+        highlightingRules.append(rule);
+
+        QTextCharFormat asteriskFormat;
+        asteriskFormat.setForeground(DarkMagenta);
+        /* the first asterisk */
+        rule.pattern.setPattern("^\\s+\\*\\s+");
+        rule.format = asteriskFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(urlPattern.pattern());
+        rule.format = urlFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "sh" || progLan == "makefile" || progLan == "cmake" || progLan == "perl" || progLan == "ruby") {
+        /* # is the sh comment sign when it doesn't follow a character */
+        if (progLan == "sh" || progLan == "makefile" || progLan == "cmake") {
+            if (progLan == "cmake")  // not the start of a bracket comment in cmake
+                rule.pattern.setPattern("(?<=^|\\s|;|\\(|\\))#(?!\\[\\=*\\[).*");
+            else
+                rule.pattern.setPattern("(?<=^|\\s|;|\\(|\\))#.*");
+
+            if (progLan == "sh") {
+                /* Kate uses something like: "<<(?:\\s*)([\\\\]{0,1}[^\\s]+)"
+                "<<-" can be used instead of "<<" */
+                hereDocDelimiter.setPattern(
+                    "<<-?(?:\\s*)(\\\\{0,1}[A-Za-z0-9_]+)|<<-?(?:\\s*)(\'[A-Za-z0-9_]+\')|<<-?(?:\\s*)(\"[A-Za-z0-9_]+"
+                    "\")");
+            }
+        }
+        else if (progLan == "perl") {
+            rule.pattern.setPattern("(?<!\\$)#.*");  // $# isn't a comment
+
+            /* without space after "<<" and with ";" at the end */
+            // hereDocDelimiter.setPattern
+            // ("<<([A-Za-z0-9_]+)(?:;)|<<(\'[A-Za-z0-9_]+\')(?:;)|<<(\"[A-Za-z0-9_]+\")(?:;)");
+            /* can contain spaces inside quote marks or backquotes and usually has ";" at the end */
+            hereDocDelimiter.setPattern(
+                "<<~?(?![0-9]+\\b)([A-Za-z0-9_]+)(?:;{0,1})|<<~?(?:\\s*)(\'[A-Za-z0-9_\\s]+\')(?:;{0,1})|<<~?(?:\\s*)("
+                "\"[A-"
+                "Za-z0-9_\\s]+\")(?:;{0,1})|<<~?(?:\\s*)(`[A-Za-z0-9_\\s]+`)(?:;{0,1})");
+        }
+        else {
+            rule.pattern.setPattern("#.*");
+
+            if (progLan == "ruby")
+                hereDocDelimiter.setPattern(
+                    "<<(?:-|~){0,1}([A-Za-z0-9_]+)|<<(?:-|~){0,1}(\'[A-Za-z0-9_]+\')|<<(?:-|~){0,1}(\"[A-Za-z0-9_]+"
+                    "\")");
+        }
+        rule.format = commentFormat;
+        highlightingRules.append(rule);
+
+        QTextCharFormat shFormat;
+
+        if (progLan == "sh" || progLan == "makefile" || progLan == "cmake") {
+            /* make parentheses, braces and ; neutral as they were in keyword patterns */
+            rule.pattern.setPattern("[\\(\\){};]");
+            rule.format = neutralFormat;
+            highlightingRules.append(rule);
+
+            shFormat.setForeground(Blue);
+            /* words before = */
+            if (progLan == "sh")
+                rule.pattern.setPattern("\\b[A-Za-z0-9_]+(?=\\=)");
+            else
+                rule.pattern.setPattern("\\b[A-Za-z0-9_]+\\s*(?=(\\+|\\?){0,1}\\=)");
+            rule.format = shFormat;
+            highlightingRules.append(rule);
+
+            /* but don't format a word before =
+               if it follows a dash */
+            rule.pattern.setPattern("-+[^\\s\\\"\\\']+(?=\\=)");
+            rule.format = neutralFormat;
+            highlightingRules.append(rule);
+        }
+
+        if (progLan == "makefile" || progLan == "cmake") {
+            shFormat.setForeground(DarkYellow);
+            /* automake/autoconf variables */
+            rule.pattern.setPattern("@[A-Za-z0-9_-]+@|^[a-zA-Z0-9_-]+\\s*(?=:)");
+            rule.format = shFormat;
+            highlightingRules.append(rule);
+        }
+
+        if (progLan == "perl") {
+            shFormat.setForeground(DarkYellow);
+            rule.pattern.setPattern("[%@\\$]");
+            rule.format = shFormat;
+            highlightingRules.append(rule);
+
+            /* numbers (the underline separator is also included) */
+            shFormat.setForeground(Brown);
+            rule.pattern.setPattern(
+                "(?<=^|[^\\w\\d\\.])("
+                "(\\d|\\d_\\d)*\\.(\\d|\\d_\\d)+|(\\d|\\d_\\d)+\\."  // floating point
+                "|"
+                "((\\d|\\d_\\d)*\\.?(\\d|\\d_\\d)+|(\\d|\\d_\\d)+\\.)(e|E)(\\+|-)?(\\d|\\d_\\d)+"  // scientific
+                "|"
+                "[1-9]_?(\\d|\\d_\\d)*"  // digits
+                "|"
+                "0[xX]([0-9a-fA-F]|[0-9a-fA-F]_[0-9a-fA-F])+"  // hexadecimal
+                "|"
+                "0([0-7]|[0-7]_[0-7])*"  // octal
+                "|"
+                "0[bB]([01]|[01]_[01])+"  // binary
+                ")(?=[^\\w\\d\\.]|$)");
+            rule.format = shFormat;
+            highlightingRules.append(rule);
+        }
+        else if (progLan == "sh" || progLan == "makefile" || progLan == "cmake") {
+            shFormat.setForeground(DarkMagenta);
+            /* operators */
+            rule.pattern.setPattern(
+                "[=\\+\\-*/"
+                "%<>&`\\|~\\^\\!,]|\\s+-eq\\s+|\\s+-ne\\s+|\\s+-gt\\s+|\\s+-ge\\s+|\\s+-lt\\s+|\\s+-le\\s+|\\s+-z\\s+");
+            rule.format = shFormat;
+            highlightingRules.append(rule);
+
+            shFormat.setFontWeight(QFont::Bold);
+            /* brackets */
+            rule.pattern.setPattern("(?<=^|\\(|\\s)\\[{1,2}\\s+|\\s+\\]{1,2}(?=($|\\)|;|\\s))");
+            rule.format = shFormat;
+            highlightingRules.append(rule);
+        }
+        else if (progLan == "ruby") {
+            /* numbers */
+            shFormat.setForeground(Brown);
+            rule.pattern.setPattern("(?<![a-zA-Z0-9_@$%])\\d+(\\.\\d+)?(?=[^\\d]|$)");
+            rule.format = shFormat;
+            highlightingRules.append(rule);
+
+            /* built-in functions */
+            shFormat.setFontWeight(QFont::Bold);
+            shFormat.setForeground(Magenta);
+            rule.pattern.setPattern(
+                "\\b(Array|Float|Integer|String|atan2|autoload\\??|binding|callcc|caller|catch|chomp\\!?|cos|dump|eval|"
+                "exec|"
+                "exit\\!?|exp|fail|format|frexp|garbage_collect|gets|gsub\\!?|ldexp|load|log|log10|open|p|print|printf|"
+                "putc|"
+                "puts|raise|rand|readline|readlines|require|require_relative|restore|scan|select|set_trace_func|sin|"
+                "singleton_method_added|sleep|split|sprintf|sqrt|srand|sub\\!?|syscall|system|tan|test|throw|trace_var|"
+                "trap|"
+                "untrace_var|warn)(?!(\\w|\\!|\\?))"
+                "|"
+                "\\b(abort|at_exit|binding|chop\\!?|egid|euid|fork|getpgrp|getpriority|gid|global_variables|kill|"
+                "lambda|"
+                "local_variables|loop|pid|ppid|proc|setpgid|setpgrp|setpriority|setsid|uid|wait|wait2|waitpid|waitpid2)"
+                "(?!("
+                "\\w|\\!|\\?))"
+                "|"
+                "(?<=\\.)(assoc|at|clear|collect\\!?|compact\\!?|concat|delete\\!?|delete_at|delete_if|each|each_index|"
+                "fill|"
+                "first|flatten\\!?|index|indexes|indices|join|last|length|nitems|pack|pop|push|rassoc|replace|"
+                "reverse\\!?|"
+                "reverse_each|rindex|shift|size\\??|slice\\!?|sort\\!?|to_a|to_ary|to_s|uniq\\!?|unshift)(?!(\\w|\\!|"
+                "\\?))"
+                "|"
+                "(?<=\\.)(atime|blksize|backtrace|blocks|ceil|close|ctime|default|dev|each_key|each_pair|each_value|"
+                "exception|fetch|floor|ftype|id2name|ino|invert|keys|message|mode|mtime|new|nlink|rdev|read|rehash|"
+                "reject\\!?"
+                "|rewind|round|seek|set_backtrace|store|superclass|tell|to_f|to_i|update|values)(?!(\\w|\\!|\\?))"
+                "|"
+                "(?<=\\.)(arity|binmode|call|clone|close_read|close_write|each_byte|each_line|eof\\??|fcntl|fileno|"
+                "flush|"
+                "getc|ioctl|isatty|lineno|offset|pos|post_match|pre_match|read|readchar|reopen|stat|string|sync|"
+                "sysread|"
+                "syswrite|to_io|to_proc|ungetc|write)(?!(\\w|\\!|\\?))"
+                "|"
+                "(?<=\\.)(ancestors|class_eval|class_variables|const_get|const_set|constants|included_modules|instance_"
+                "methods|module_eval|name|private_class_method|private_instance_methods|protected_instance_methods|"
+                "public_"
+                "class_method|public_instance_methods)(?!(\\w|\\!|\\?))"
+                "|"
+                "(?<=\\.)(__id__|__send__|abs|coerce|display|divmod|dup|extend|freeze|hash|id|include|inspect|instance_"
+                "eval|"
+                "instance_variables|method|method_missing|methods|modulo|prepend|private_methods|protected_methods|"
+                "public_"
+                "methods|remainder|send|singleton_methods|taint|type|untaint)(?!(\\w|\\!|\\?))"
+                "|"
+                "(?<=\\.)(add|capitalize\\!?|center|count|crypt|downcase\\!?|hex|intern|kcode|list|ljust|match|members|"
+                "next\\!?|oct|rjust|source|squeeze\\!?|strip\\!?|succ\\!?|sum|swapcase\\!?|to_str|tr\\!?|tr_s\\!?|"
+                "unpack|"
+                "upcase\\!?|upto)(?!(\\w|\\!|\\?))"
+                "|"
+                "(?<=\\.)(abort_on_exception|asctime|day|detect|each_with_index|entries|find|find_all|gmtime|grep|hour|"
+                "isdst|"
+                "localtime|map\\!?|max|mday|min|mon|month|priority|run|safe_level|sec|status|strftime|tv_sec|tv_usec|"
+                "usec|"
+                "utc|value\\??|wday|yday|year|wakeup|zone)(?!(\\w|\\!|\\?))"
+                "|"
+                "(?<=\\.)(begin|class|end)(?!(\\w|\\!|\\?))"
+                "|"
+                "(?<=\\.)(alive|block_given|blockdev|casefold|chardev|closed|const_defined|directory|empty|eql|equal|"
+                "exclude_"
+                "end|executable|executable_real|exist|exists|file|finite|frozen|gmt|grpowned|has_key|has_value|include|"
+                "infinite|instance_of|integer|is_a|iterator|key|kind_of|member|method_defined|nan|nil|nonzero|owned|"
+                "pipe|"
+                "readable|readable_real|respond_to|setgid|setuid|socket|sticky|stop|symlink|tainted|tty|writable|"
+                "writable_"
+                "real|zero)\\?(?!(\\w|\\!|\\?))");
+            rule.format = shFormat;
+            highlightingRules.append(rule);
+        }
+    }
+    else if (progLan == "diff") {
+        QTextCharFormat diffMinusFormat;
+        diffMinusFormat.setForeground(Red);
+        rule.pattern.setPattern("^\\-.*");
+        rule.format = diffMinusFormat;
+        highlightingRules.append(rule);
+
+        QTextCharFormat diffPlusFormat;
+        diffPlusFormat.setForeground(Blue);
+        rule.pattern.setPattern("^\\+.*");
+        rule.format = diffPlusFormat;
+        highlightingRules.append(rule);
+
+        /*diffMinusFormat.setFontWeight (QFont::Bold);
+        rule.pattern.setPattern ("^\\-{3}.*");
+        rule.format = diffMinusFormat;
+        highlightingRules.append (rule);
+
+        diffPlusFormat.setFontWeight (QFont::Bold);
+        rule.pattern.setPattern ("^\\+{3}.*");
+        rule.format = diffPlusFormat;
+        highlightingRules.append (rule);*/
+
+        QTextCharFormat diffLinesFormat;
+        diffLinesFormat.setForeground(DarkBlue);
+        diffLinesFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern("^diff.*");
+        rule.format = diffLinesFormat;
+        highlightingRules.append(rule);
+
+        diffLinesFormat.setForeground(DarkGreenAlt);
+        rule.pattern.setPattern("^@{2}[\\d,\\-\\+\\s]+@{2}");
+        rule.format = diffLinesFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "log") {
+        /* example:
+         * May 19 02:01:44 debian sudo:
+         *   blue  green  magenta bold */
+        QTextCharFormat logFormat = neutralFormat;
+        logFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern(
+            "\\b(\\d{4}-\\d{2}-\\d{2}|\\d{2}/(\\d{2}|[A-Za-z]{3})/\\d{4}|\\d{4}/(\\d{2}|[A-Za-z]{3})/"
+            "\\d{2}|[A-Za-z]{3}\\s+\\d{1,2})(T|\\s)\\d{2}:\\d{2}(:\\d{2}((\\+|-)\\d+)?)?(AM|PM|am|pm)?\\s+[A-Za-z0-9_"
+            "\\s]+("
+            "?=\\s*:)");
+        rule.format = logFormat;
+        highlightingRules.append(rule);
+
+        logFormat.setForeground(Magenta);
+        rule.pattern.setPattern(
+            "\\b(\\d{4}-\\d{2}-\\d{2}|\\d{2}/(\\d{2}|[A-Za-z]{3})/\\d{4}|\\d{4}/(\\d{2}|[A-Za-z]{3})/"
+            "\\d{2}|[A-Za-z]{3}\\s+\\d{1,2})(T|\\s)\\d{2}:\\d{2}(:\\d{2}((\\+|-)\\d+)?)?(AM|PM|am|pm)?\\s+[A-Za-z0-9_]+"
+            "(?="
+            "\\s|$|:)");
+        rule.format = logFormat;
+        highlightingRules.append(rule);
+
+        /* date */
+        logFormat.setForeground(Blue);
+        rule.pattern.setPattern(
+            "\\b(\\d{4}-\\d{2}-\\d{2}|\\d{2}/(\\d{2}|[A-Za-z]{3})/\\d{4}|\\d{4}/(\\d{2}|[A-Za-z]{3})/"
+            "\\d{2}|[A-Za-z]{3}\\s+\\d{1,2})(?=(T|\\s)\\d{2}:\\d{2}(:\\d{2}((\\+|-)\\d+)?)?(AM|PM|am|pm)?\\b)");
+        rule.format = logFormat;
+        highlightingRules.append(rule);
+
+        /* time */
+        logFormat.setForeground(DarkGreenAlt);
+        rule.pattern.setPattern("(?<=T|\\s)\\d{2}:\\d{2}(:\\d{2}((\\+|-)\\d+)?)?(AM|PM|am|pm)?\\b");
+        rule.format = logFormat;
+        highlightingRules.append(rule);
+
+        logFormat.setForeground(Brown);
+        rule.pattern.setPattern("\\s+IN(?=\\s*\\=)|\\s+OUT(?=\\s*\\=)");
+        rule.format = logFormat;
+        highlightingRules.append(rule);
+
+        logFormat.setForeground(Red);
+        rule.pattern.setPattern("\\broot\\b");
+        rule.format = logFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "srt") {
+        QTextCharFormat srtFormat;
+        srtFormat.setFontWeight(QFont::Bold);
+
+        /* <...> */
+        srtFormat.setForeground(Violet);
+        rule.pattern.setPattern("</?[A-Za-z0-9_#\\s\"\\=]+>");
+        rule.format = srtFormat;
+        highlightingRules.append(rule);
+
+        /* hh:mm:ss,ttt */
+        srtFormat = neutralFormat;
+        srtFormat.setFontItalic(true);
+        srtFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern("^\\s*\\d{2}:\\d{2}:\\d{2},\\d{3}\\s+-->\\s+\\d{2}:\\d{2}:\\d{2},\\d{3}\\s*$");
+        rule.format = srtFormat;
+        highlightingRules.append(rule);
+
+        /* subtitle line */
+        srtFormat.setForeground(Red);
+        rule.pattern.setPattern("^\\d+$");
+        rule.format = srtFormat;
+        highlightingRules.append(rule);
+
+        /* hh */
+        srtFormat.setForeground(Blue);
+        rule.pattern.setPattern("^\\s*\\d{2}(?=:\\d{2}:\\d{2},\\d{3}\\s+-->\\s+\\d{2}:\\d{2}:\\d{2},\\d{3}\\s*$)");
+        rule.format = srtFormat;
+        highlightingRules.append(rule);
+        rule.pattern.setPattern("^\\s*\\d{2}:\\d{2}:\\d{2},\\d{3}\\s+-->\\s+\\K\\d{2}(?=:\\d{2}:\\d{2},\\d{3}\\s*$)");
+        highlightingRules.append(rule);
+
+        /* mm */
+        srtFormat.setForeground(DarkGreenAlt);
+        rule.pattern.setPattern("^\\s*\\d{2}:\\K\\d{2}(?=:\\d{2},\\d{3}\\s+-->\\s+\\d{2}:\\d{2}:\\d{2},\\d{3}\\s*$)");
+        rule.format = srtFormat;
+        highlightingRules.append(rule);
+        rule.pattern.setPattern("^\\s*\\d{2}:\\d{2}:\\d{2},\\d{3}\\s+-->\\s+\\d{2}:\\K\\d{2}(?=:\\d{2},\\d{3}\\s*$)");
+        highlightingRules.append(rule);
+
+        /* ss */
+        srtFormat.setForeground(Brown);
+        rule.pattern.setPattern("^\\s*\\d{2}:\\d{2}:\\K\\d{2}(?=,\\d{3}\\s+-->\\s+\\d{2}:\\d{2}:\\d{2},\\d{3}\\s*$)");
+        rule.format = srtFormat;
+        highlightingRules.append(rule);
+        rule.pattern.setPattern("^\\s*\\d{2}:\\d{2}:\\d{2},\\d{3}\\s+-->\\s+\\d{2}:\\d{2}:\\K\\d{2}(?=,\\d{3}\\s*$)");
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "desktop" || progLan == "config" || progLan == "theme" || progLan == "toml") {
+        QTextCharFormat desktopFormat = neutralFormat;
+        if (progLan == "config") {
+            desktopFormat.setFontWeight(QFont::Bold);
+            desktopFormat.setFontItalic(true);
+            /* color values */
+            rule.pattern.setPattern(
+                "#([A-Fa-f0-9]{3}){1,2}(?![A-Za-z0-9_]+)|#([A-Fa-f0-9]{3}){2}[A-Fa-f0-9]{2}(?![A-Za-z0-9_]+)");
+            rule.format = desktopFormat;
+            highlightingRules.append(rule);
+            desktopFormat.setFontItalic(false);
+            desktopFormat.setFontWeight(QFont::Normal);
+
+            /* URLs */
+            rule.pattern = urlPattern;
+            rule.format = urlFormat;
+            highlightingRules.append(rule);
+        }
+        else if (progLan == "toml") {
+            desktopFormat.setForeground(Brown);
+            rule.pattern.setPattern(
+                "(?<=^|[^\\w\\d\\.])("
+                "([0-9_]*\\.[0-9_]+|[0-9_]+\\.|([0-9_]*\\.?[0-9_]+|[0-9_]+\\.)(e|E)(\\+|-)?[0-9_]+)"
+                "|"
+                "0[xX]([0-9a-fA-F_]*\\.?[0-9a-fA-F_]+|[0-9a-fA-F_]+\\.)(p|P)(\\+|-)?[0-9_]+"
+                "|"
+                "([1-9][0-9_]*|0[0-7_]*|0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+)"
+                ")(?=[^\\w\\d\\.]|$)");
+            rule.format = desktopFormat;
+            highlightingRules.append(rule);
+        }
+
+        desktopFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern("^[^\\=\\[]+=|^[^\\=\\[]+\\[.*\\]=|;|/|%|\\+|-");
+        rule.format = desktopFormat;
+        highlightingRules.append(rule);
+
+        desktopFormat = neutralFormat;
+        desktopFormat.setFontWeight(QFont::Bold);
+        /* [...] */
+        if (progLan == "toml")
+            rule.pattern.setPattern("^\\s*(\\[[A-Za-z0-9_\\-\\.\"']*\\]|\\[\\[[A-Za-z0-9_\\-\\.\"']*\\]\\])");
+        else
+            rule.pattern.setPattern("^\\[.*\\]$");
+        rule.format = desktopFormat;
+        highlightingRules.append(rule);
+
+        if (progLan == "toml") {
+            desktopFormat.setForeground(Violet);
+            /* before = */
+            rule.pattern.setPattern("[A-Za-z0-9_\\-\\.\"']+(?=\\s*\\=)");
+        }
+        else {
+            desktopFormat.setForeground(Blue);
+            /* [...] and before = (like ...[en]=) */
+            rule.pattern.setPattern("^[^\\=\\[]+\\[.*\\](?=\\s*\\=)");
+            rule.format = desktopFormat;
+            highlightingRules.append(rule);
+
+            desktopFormat.setForeground(DarkGreenAlt);
+            /* before = and [] */
+            rule.pattern.setPattern("^[^\\=\\[]+(?=(\\[.*\\])*\\s*\\=)");
+        }
+        rule.format = desktopFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "openbox") {
+        QTextCharFormat obpFormat = neutralFormat;
+        obpFormat.setFontWeight(QFont::Bold);
+        obpFormat.setFontItalic(true);
+        /* color values */
+        rule.pattern.setPattern(
+            "#([A-Fa-f0-9]{3}){1,2}(?![A-Za-z0-9_]+)|#([A-Fa-f0-9]{3}){2}[A-Fa-f0-9]{2}(?![A-Za-z0-9_]+)");
+        rule.format = obpFormat;
+        highlightingRules.append(rule);
+        obpFormat.setFontItalic(false);
+
+        obpFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern("^[^\\s:]+\\:");
+        rule.format = obpFormat;
+        highlightingRules.append(rule);
+
+        obpFormat.setForeground(DarkGreenAlt);
+        /* before : */
+        rule.pattern.setPattern("^[^\\s:]+(?=\\s*\\:)");
+        rule.format = obpFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "yaml") {
+        rule.pattern.setPattern("(?<=^|\\s)#.*");
+        rule.format = commentFormat;
+        highlightingRules.append(rule);
+
+        QTextCharFormat yamlFormat;
+
+        /* keys (a key shouldn't start with a quote but can contain quotes) */
+        yamlFormat.setForeground(Blue);
+        rule.pattern.setPattern("\\s*[^\\s\"\'#][^:,#]*:(\\s+|$)");
+        rule.format = yamlFormat;
+        highlightingRules.append(rule);
+
+        /* values */
+        // NOTE: This is the first time I use \K with Qt and it seems to work well.
+        yamlFormat.setForeground(Violet);
+        rule.pattern.setPattern("[^:#]*:\\s+\\K[^#]+");
+        rule.format = yamlFormat;
+        highlightingRules.append(rule);
+
+        /* non-value numbers (including the scientific notation) */
+        yamlFormat.setForeground(Brown);
+        rule.pattern.setPattern(
+            "^((\\s*-\\s)+)?\\s*\\K([-+]?(\\d*\\.?\\d+|\\d+\\.)((e|E)(\\+|-)?\\d+)?|0[xX][0-9a-fA-F]+)\\s*(?=(#|$))");
+        rule.format = yamlFormat;
+        highlightingRules.append(rule);
+
+        /* lists */
+        yamlFormat.setForeground(DarkBlue);
+        yamlFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern("^(\\s*-(\\s|$))+");
+        rule.format = yamlFormat;
+        highlightingRules.append(rule);
+
+        /* booleans */
+        rule.pattern.setPattern(
+            "^((\\s*-\\s)+)?\\s*\\K(true|false|yes|no|TRUE|FALSE|YES|NO|True|False|Yes|No)\\s*(?=(#|$))");
+        rule.format = yamlFormat;
+        highlightingRules.append(rule);
+
+        /* the start of a literal block (-> yamlLiteralBlock()) */
+        codeBlockFormat.setForeground(DarkMagenta);
+        codeBlockFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern("^(?!#)(?:(?!\\s#).)*\\s+\\K(\\||>)-?\\s*(?=\\s#|$)");
+        rule.format = codeBlockFormat;
+        highlightingRules.append(rule);
+
+        yamlFormat.setForeground(Verda);
+        rule.pattern.setPattern("^---.*");
+        rule.format = yamlFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "fountain") {
+        QTextCharFormat fFormat;
+
+        /* sections */
+        fFormat.setForeground(DarkRed);
+        fFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern("^\\s*#.*");
+        rule.format = fFormat;
+        highlightingRules.append(rule);
+
+        /* centered */
+        rule.pattern.setPattern(">|<");
+        rule.format = fFormat;
+        highlightingRules.append(rule);
+
+        /* synopses */
+        fFormat.setFontItalic(true);
+        rule.pattern.setPattern("^\\s*=.*");
+        rule.format = fFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "url") {
+        rule.pattern.setPattern(urlPattern.pattern());
+        rule.format = urlFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "gtkrc") {
+        QTextCharFormat gtkrcFormat;
+        gtkrcFormat.setFontWeight(QFont::Bold);
+        /* color value format (#xyz) */
+        /*gtkrcFormat.setForeground (DarkGreenAlt);
+        rule.pattern.setPattern
+        ("#([A-Fa-f0-9]{3}){1,2}(?![A-Za-z0-9_]+)|#([A-Fa-f0-9]{3}){2}[A-Fa-f0-9]{2}(?![A-Za-z0-9_]+)"); rule.format =
+        gtkrcFormat; highlightingRules.append (rule);*/
+
+        gtkrcFormat.setForeground(Blue);
+        rule.pattern.setPattern(
+            "(fg|bg|base|text)(\\[NORMAL\\]|\\[PRELIGHT\\]|\\[ACTIVE\\]|\\[SELECTED\\]|\\[INSENSITIVE\\])");
+        rule.format = gtkrcFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "markdown") {
+        blockQuoteFormat.setForeground(DarkGreen);
+        codeBlockFormat.setForeground(DarkRed);
+        QTextCharFormat markdownFormat;
+
+        /* footnotes */
+        markdownFormat.setFontWeight(QFont::Bold);
+        markdownFormat.setForeground(DarkBlue);
+        markdownFormat.setFontItalic(true);
+        rule.pattern.setPattern("\\[\\^[^\\]]+\\]");
+        rule.format = markdownFormat;
+        highlightingRules.append(rule);
+        markdownFormat.setFontItalic(false);
+
+        /* horizontal rules */
+        markdownFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern(
+            "^ {0,3}(\\* {0,2}){3,}\\s*$"
+            "|"
+            "^ {0,3}(- {0,2}){3,}\\s*$"
+            "|"
+            "^ {0,3}(\\= {0,2}){3,}\\s*$");
+        rule.format = markdownFormat;
+        highlightingRules.append(rule);
+
+        /*
+           links:
+           [link text] [link]
+           [link text] (http://example.com "Title")
+           [link text]: http://example.com
+           <http://example.com>
+        */
+        rule.pattern.setPattern(
+            "\\[[^\\]\\^]*\\]\\s*\\[[^\\]\\s]*\\]"
+            "|"
+            "\\[[^\\]\\^]*\\]\\s*\\(\\s*[^\\)\\(\\s]+(\\s+\\\".*\\\")*\\s*\\)"
+            "|"
+            "\\[[^\\]\\^]*\\]:\\s+\\s*[^\\)\\(\\s]+(\\s+\\\".*\\\")*"
+            "|"
+            "<([A-Za-z0-9_]+://[A-Za-z0-9_.+/"
+            "\\?\\=~&%#\\-:\\(\\)\\[\\]]+|[A-Za-z0-9_.\\-]+@[A-Za-z0-9_\\-]+\\.[A-Za-z0-9.]+)>");
+        rule.format = urlFormat;
+        highlightingRules.append(rule);
+
+        /*
+           images:
+           ![image](image.jpg "An image")
+           ![Image][1]
+           [1]: /path/to/image "alt text"
+        */
+        markdownFormat.setFontWeight(QFont::Normal);
+        markdownFormat.setForeground(Violet);
+        markdownFormat.setFontUnderline(true);
+        rule.pattern.setPattern(
+            "\\!\\[[^\\]\\^]*\\]\\s*"
+            "(\\(\\s*[^\\)\\(\\s]+(\\s+\\\".*\\\")*\\s*\\)|\\s*\\[[^\\]]*\\])");
+        rule.format = markdownFormat;
+        highlightingRules.append(rule);
+        markdownFormat.setFontUnderline(false);
+
+        /* headings */
+        markdownFormat.setFontWeight(QFont::Bold);
+        markdownFormat.setForeground(Verda);
+        rule.pattern.setPattern("^#+\\s+.*");
+        rule.format = markdownFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "reST") {
+        /* For bold, italic, verbatim and link
+
+           possible characters before the start:  ([{<:'"/
+           possible characters after the end:     )]}>.,;:-'"/\
+        */
+
+        codeBlockFormat.setForeground(DarkRed);
+        QTextCharFormat reSTFormat;
+
+        /* headings */
+        reSTFormat.setFontWeight(QFont::Bold);
+        reSTFormat.setForeground(Blue);
+        rule.pattern.setPattern("^([^\\s\\w:])\\1{2,}$");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+
+        /* lists */
+        reSTFormat.setFontWeight(QFont::Bold);
+        reSTFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern(
+            "^\\s*(\\*|-|\\+|#\\.|[0-9]+\\.|[0-9]+\\)|\\([0-9]+\\)|[a-zA-Z]\\.|[a-zA-Z]\\)|\\([a-zA-Z]\\))\\s+");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+
+        /* verbatim */
+        quoteFormat.setForeground(Blue);
+        rule.pattern.setPattern(
+            "(?<=[\\s\\(\\[{<:'\\\"/]|^)``"
+            "([^`\\s]((?!``).)*[^`\\s]"
+            "|"
+            "[^`\\s])"
+            "``(?=[\\s\\)\\]}>.,;:\\-'\\\"/\\\\]|$)");
+        rule.format = quoteFormat;
+        highlightingRules.append(rule);
+
+        /* links */
+        reSTFormat = urlFormat;
+        rule.pattern.setPattern(
+            "(?<=[\\s\\(\\[{<:'\\\"/]|^)"
+            "(`(\\S+|\\S((?!`_ ).)*\\S)`|\\w+|\\[\\w+\\])"
+            "_(?=[\\s\\)\\]}>.,;:\\-'\\\"/\\\\]|$)");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+
+        reSTFormat = neutralFormat;
+
+        /* bold */
+        reSTFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern(
+            "(?<=[\\s\\(\\[{<:'\\\"/]|^)\\*\\*"
+            "([^*\\s]|[^*\\s][^*]*[^*\\s])"
+            "\\*\\*(?=[\\s\\)\\]}>.,;:\\-'\\\"/\\\\]|$)");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+        reSTFormat.setFontWeight(QFont::Normal);
+
+        /* italic */
+        reSTFormat.setFontItalic(true);
+        rule.pattern.setPattern(
+            "(?<=[\\s\\(\\[{<:'\\\"/]|^)\\*"
+            "([^*\\s]|[^*\\s]+[^*]*[^*\\s])"
+            "\\*(?=[\\s\\)\\]}>.,;:\\-'\\\"/\\\\]|$)");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+        reSTFormat.setFontItalic(false);
+
+        /* labels and substitutions (".. _X:" and ".. |X| Y::") */
+        reSTFormat.setForeground(Violet);
+        rule.pattern.setPattern("^\\s*\\.{2} _[\\w\\s\\-+]*:(?!\\S)");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+        rule.pattern.setPattern("^\\s*\\.{2} \\|[\\w\\s]+\\|\\s+\\w+::(?!\\S)");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+
+        /* aliases ("|X|") */
+        rule.pattern.setPattern(
+            "(?<=[\\s\\(\\[{<:'\\\"/]|^)"
+            "\\|(?!\\s)[^|]+\\|"
+            "(?=[\\s\\)\\]}>.,;:\\-'\\\"/\\\\]|$)");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+
+        /* footnotes (".. [#X]") */
+        rule.pattern.setPattern("^\\s*\\.{2} (\\[(\\w|\\s|-|\\+|\\*)+\\]|\\[#(\\w|\\s|-|\\+)*\\])\\s+");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+
+        /* references */
+        reSTFormat.setForeground(Brown);
+        rule.pattern.setPattern(":[\\w\\-+]+:`[^`]*`");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+
+        /* ".. X::" (like literalinclude) */
+        reSTFormat.setFontWeight(QFont::Bold);
+        reSTFormat.setForeground(DarkGreen);
+        // rule.pattern.setPattern ("^\\s*\\.{2} literalinclude::(?!\\S)");
+        rule.pattern.setPattern("^\\s*\\.{2} ((\\w|-)+::(?!\\S)|code-block::)");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+
+        /* ":X:" */
+        reSTFormat.setFontWeight(QFont::Normal);
+        reSTFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern("^\\s*:[^:]+:(?!\\S)");
+        rule.format = reSTFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "lua") {
+        errorFormat.setForeground(Red);
+        errorFormat.setFontUnderline(true);
+
+        QTextCharFormat luaFormat;
+        luaFormat.setFontWeight(QFont::Bold);
+        luaFormat.setFontItalic(true);
+        luaFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern("\\bos(?=\\.)");
+        rule.format = luaFormat;
+        highlightingRules.append(rule);
+
+        /* built-in functions */
+        luaFormat.setForeground(Magenta);
+        rule.pattern.setPattern(
+            "\\b(assert|collectgarbage|dofile|error|getmetatable|ipairs|load|loadfile|next|pairs|pcall|print|rawequal|"
+            "rawget|rawlen|rawset|select|setmetatable|tonumber|tostring|type|warn|xpcall)(?=\\s*\\()");
+        rule.format = luaFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "m3u") {
+        QTextCharFormat plFormat = neutralFormat;
+        plFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern("^#EXTM3U\\b");
+        rule.format = plFormat;
+        highlightingRules.append(rule);
+
+        /* after "," */
+        plFormat.setFontWeight(QFont::Normal);
+        plFormat.setForeground(DarkRed);
+        rule.pattern.setPattern("^#EXTINF\\s*:[^,]*,\\K.*");  // "^#EXTINF\\s*:\\s*-*\\d+\\s*,.*|^#EXTINF\\s*:\\s*,.*"
+        rule.format = plFormat;
+        highlightingRules.append(rule);
+
+        /* before "," and after "EXTINF:" */
+        plFormat.setForeground(DarkYellow);
+        rule.pattern.setPattern("^#EXTINF\\s*:\\s*\\K-*\\d+\\b");  // "^#EXTINF\\s*:\\s*-*\\d+\\b"
+        rule.format = plFormat;
+        highlightingRules.append(rule);
+
+        /*plFormat = neutralFormat;
+        rule.pattern.setPattern ("^#EXTINF\\s*:");
+        rule.format = plFormat;
+        highlightingRules.append (rule);*/
+
+        plFormat.setForeground(DarkGreen);
+        plFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern("^#EXTINF\\b");
+        rule.format = plFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "scss") {
+        /* scss supports nested css blocks but, instead of making its highlighting complex,
+           we format it without considering that and so, without syntax error, but with keywords() */
+
+        QTextCharFormat scssFormat;
+
+        /* definitions (starting with @) */
+        scssFormat.setForeground(Brown);
+        rule.pattern.setPattern("@[A-Za-z_-]+\\b");
+        rule.format = scssFormat;
+        highlightingRules.append(rule);
+
+        /* numbers */
+        scssFormat.setFontItalic(true);
+        rule.pattern.setPattern("(-|\\+){0,1}\\b\\d*\\.{0,1}\\d+%*");
+        rule.format = scssFormat;
+        highlightingRules.append(rule);
+
+        /* colors */
+        scssFormat.setForeground(Verda);
+        scssFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern(
+            "#([A-Fa-f0-9]{3}){1,2}(?![A-Za-z0-9_]+)|#([A-Fa-f0-9]{3}){2}[A-Fa-f0-9]{2}(?![A-Za-z0-9_]+)");
+        rule.format = scssFormat;
+        highlightingRules.append(rule);
+
+        /* before :...; */
+        scssFormat.setForeground(Blue);
+        scssFormat.setFontItalic(false);
+        /* exclude note patterns artificially */
+        rule.pattern.setPattern("[A-Za-z0-9_\\-]+(?<!\\bNOTE|\\bTODO|\\bFIXME|\\bWARNING)(?=\\s*:.*;*)");
+        rule.format = scssFormat;
+        highlightingRules.append(rule);
+        scssFormat.setFontWeight(QFont::Normal);
+
+        /* variables ($...) */
+        scssFormat.setFontItalic(true);
+        rule.pattern.setPattern("\\$[A-Za-z0-9_\\-]+");
+        rule.format = scssFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "dart") {
+        QTextCharFormat dartFormat;
+
+        /* dart:core classes */
+        dartFormat.setFontWeight(QFont::Bold);
+        dartFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern(
+            "\\b(?<!(@|#|\\$))(AbstractClassInstantiationError|ArgumentError|AssertionError|BidirectionalIterator|"
+            "BigInt|"
+            "CastError|Comparable|ConcurrentModificationError|CyclicInitializationError|DateTime|Deprecated|Duration|"
+            "Error|"
+            "Exception|Expando|FallThroughError|FormatException|Function|Future|IndexError|"
+            "IntegerDivisionByZeroException|"
+            "Invocation|Iterable|Iterator|JsonCyclicError|JsonUnsupportedObjectError|List|Map|MapEntry|Match|Never|"
+            "NoSuchMethodError|NullThrownError|Object|OutOfMemoryError|Pattern|RangeError|RegExp|RegExpMatch|"
+            "RuneIterator|"
+            "Runes|Set|Sink|StackOverflowError|StackTrace|StateError|Stopwatch|Stream|String|StringBuffer|StringSink|"
+            "Symbol|Type|TypeError|UnimplementedError|UnsupportedError|Uri|UriData)(?!(@|#|\\$))\\b");
+        rule.format = dartFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "go") {
+        singleQuoteMark.setPattern("`");
+        mixedQuoteMark.setPattern("\"|`");
+
+        QTextCharFormat goFormat;
+        goFormat.setFontWeight(QFont::Bold);
+        goFormat.setForeground(Magenta);
+        rule.pattern.setPattern(
+            "\\b(append|cap|close|complex|copy|delete|imag|len|make|new|panic|print|println|real|recover)\\b");
+        rule.format = goFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "rust") {
+        rawLiteralFormat = quoteFormat;
+        rawLiteralFormat.setFontWeight(QFont::Bold);
+
+        /* wrong numbers */
+        QTextCharFormat rustFormat;
+        rustFormat.setForeground(Red);
+        rustFormat.setFontUnderline(true);
+        rule.pattern.setPattern(
+            "\\b0(?:b[01_]*[^01_]|o[0-7_]*[^0-7_]|x[0-9a-fA-F_]*[^0-9a-fA-F_])\\w*(?:[iu](?:8|16|32|64|128|size)?)?"
+            "\\b");
+        rule.format = rustFormat;
+        highlightingRules.append(rule);
+        rustFormat.setFontUnderline(false);
+
+        /* before :: */
+        rustFormat.setForeground(Blue);
+        rustFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern("(?<![a-zA-Z]|'|\\\")[a-zA-Z]\\w*::");
+        rule.format = rustFormat;
+        highlightingRules.append(rule);
+
+        /* traits */
+        rustFormat.setForeground(DarkMagenta);
+        rustFormat.setFontItalic(true);
+        rule.pattern.setPattern(
+            "\\b(?<!(\\\"|@|#|\\$))(Add|AddAssign|Alloc|Any|AsMut|AsRef|Binary|BitAnd|BitAndAssign|BitOr|BitOrAssign|"
+            "BitXor|BitXorAssign|Borrow|BorrowMut|BuildHasher|Clone|CoerceUnsized|Copy|Debug|Default|Deref|DerefMut|"
+            "DispatchFromDyn|Display|Div|DivAssign|DoubleEndedIterator|Drop|Eq|ExactSizeIterator|Extend|FixedSizeArray|"
+            "Fn|"
+            "FnBox|FnMut|FnOnce|From|FromIterator|FromStr|FusedIterator|Future|Generator|GlobalAlloc|Hash|Hasher|Index|"
+            "IndexMut|Into|IntoIterator|Iterator|LowerExp|LowerHex|Mul|MulAssign|Neg|Not|Octal|Ord|PartialEq|"
+            "PartialOrd|"
+            "Pointer|Product|RangeBounds|Rem|RemAssign|Send|Shl|ShlAssign|Shr|ShrAssign|Sized|SliceIndex|Step|Sub|"
+            "SubAssign|Sum|Sync|TrustedLen|Try|TryFrom|TryInto|Unpin|Unsize|UpperExp|UpperHex|Write|AsSlice|BufRead|"
+            "CharExt|Decodable|Encodable|Error|FromPrimitive|IteratorExt|MultiSpan|MutPtrExt|Pattern|PtrExt|Rand|Read|"
+            "RefUnwindSafe|Seek|SliceConcatExt|SliceExt|Str|StrExt|TDynBenchFn|Termination|ToOwned|ToSocketAddrs|"
+            "ToString|"
+            "UnwindSafe)(?!(\\\"|'|@|\\$))\\b");
+        rule.format = rustFormat;
+        highlightingRules.append(rule);
+
+        /* constants */
+        rustFormat.setForeground(DarkBlue);
+        rule.pattern.setPattern(
+            "\\b(?<!(\\\"|@|#|\\$))(true|false|Some|None|Ok|Err|Success|Failure|Cons|Nil|MAX|REPLACEMENT_CHARACTER|"
+            "UNICODE_"
+            "VERSION|DIGITS|EPSILON|INFINITY|MANTISSA_DIGITS|MAX_10_EXP|MAX_EXP|MIN|MIN_10_EXP|MIN_EXP|MIN_POSITIVE|"
+            "NAN|"
+            "NEG_INFINITY|RADIX|MAIN_SEPARATOR|ONCE_INIT|UNIX_EPOCH|EXIT_FAILURE|EXIT_SUCCESS|RAND_MAX|EOF|SEEK_SET|"
+            "SEEK_"
+            "CUR|SEEK_END|_IOFBF|_IONBF|_IOLBF|BUFSIZ|FOPEN_MAX|FILENAME_MAX|L_tmpnam|TMP_MAX|O_RDONLY|O_WRONLY|O_RDWR|"
+            "O_"
+            "APPEND|O_CREAT|O_EXCL|O_TRUNC|S_IFIFO|S_IFCHR|S_IFBLK|S_IFDIR|S_IFREG|S_IFMT|S_IEXEC|S_IWRITE|S_IREAD|S_"
+            "IRWXU|"
+            "S_IXUSR|S_IWUSR|S_IRUSR|F_OK|R_OK|W_OK|X_OK|STDIN_FILENO|STDOUT_FILENO|STDERR_FILENO)(?!(\\\"|'|@|\\$))"
+            "\\b");
+        rule.format = rustFormat;
+        highlightingRules.append(rule);
+
+        /* self */
+        rustFormat.setFontItalic(false);
+        rustFormat.setForeground(DarkRed);
+        rule.pattern.setPattern("\\b(?<!(\\\"|@|#|\\$))self(?!(\\\"|'|@|\\$))\\b");
+        rule.format = rustFormat;
+        highlightingRules.append(rule);
+
+        /* single quotes */
+        rule.pattern.setPattern("'([^'\\\\]{0,1}|\\\\(r|t|n|'|\\\"|\\\\|x[0-9a-fA-F]{2}))'");
+        rule.format = altQuoteFormat;
+        highlightingRules.append(rule);
+
+        /* apostrophe */
+        rustFormat.setFontWeight(QFont::Normal);
+        rustFormat.setForeground(Violet);
+        rule.pattern.setPattern("'[a-zA-Z]\\w*(?!')");
+        rule.format = rustFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "tcl") {
+        QTextCharFormat tclFormat;
+
+        /* backslash should also be taken into account (as in "Highlighter::keywords") */
+
+        /* numbers */
+        tclFormat.setForeground(Brown);
+        rule.pattern.setPattern(
+            "(?<!([a-zA-Z0-9_#@$\"\'`](?!\\\\)))(?<!\\\\)(\\\\{2})*\\K(\\d+(\\.|\\.\\d+)?|\\.\\d+)(?=[^\\d]|$)");
+        rule.format = tclFormat;
+        highlightingRules.append(rule);
+
+        /* extra Tcl/Tk keywords (options) */
+        tclFormat.setForeground(DarkMagenta);
+        rule.pattern.setPattern(
+            "(?<!\\\\)(\\\\{2})*(?<!((#|\\$|@|\"|\'|`)(?!\\\\)))(\\\\(#|\\$|@|\"|\'|`)){0,1}\\K\\b(activate|actual|add|"
+            "addtag|appname|args|aspect|atime|atom|atomname|attributes|bbox|body|broadcast|bytelength|cancel|canvasx|"
+            "canvasy|caret|cget|cells|channels|children|class|clear|clicks|client|clone|cmdcount|colormapfull|"
+            "colormapwindows|command|commands|compare|complete|configure|containing|convertfrom|convertto|coords|copy|"
+            "create|current|curselection|dchars|debug|default|depth|delete|dirname|deiconify|delta|deselect|dlineinfo|"
+            "dtag|"
+            "dump|edit|entrycget|entryconfigure|equal|executable|exists|extension|families|find|first|flash|focusmodel|"
+            "forget|fpixels|fraction|functions|generate|geometry|get|gettags|globals|group|handle|height|hide|hostname|"
+            "iconbitmap|iconify|iconmask|iconname|iconposition|iconwindow|icursor|id|identify|idle|ifneeded|inactive|"
+            "index|"
+            "insert|inuse|interps|invoke|is|isdirectory|isfile|ismapped|itemcget|itemconfigure|keys|last|length|level|"
+            "library|link|loaded|locals|lstat|manager|map|mark|match|maxsize|measure|metrics|minsize|mkdir|move|mtime|"
+            "name|"
+            "nameofexecutable|names|nativename|nearest|normalize|number|overrideredirect|own|owned|panecget|"
+            "paneconfigure|"
+            "panes|parent|patchlevel|pathname|pathtype|pixels|pointerx|pointerxy|pointery|positionfrom|post|"
+            "postcascade|"
+            "postscript|present|procs|protocol|provide|proxy|range|readable|readlink|release|remove|repeat|replace|"
+            "reqheight|require|reqwidth|resizable|rgb|rootname|rootx|rooty|scaling|screen|screencells|screendepth|"
+            "screenheight|screenmmheight|screenmmwidth|screenvisual|screenwidth|script|search|seconds|see|select|"
+            "server|"
+            "sharedlibextension|show|size|sizefrom|stackorder|stat|state|status|system|tag|tail|tclversion|title|"
+            "tolower|"
+            "totitle|toupper|transient|trim|trimleft|trimright|type|types|unpost|useinputmethods|validate|values|vars|"
+            "vcompare|vdelete|versions|viewable|vinfo|visual|visualid|visualsavailable|volumes|vrootheight|vrootwidth|"
+            "vrootx|vrooty|vsatisfies|width|window|windowingsystem|withdraw|wordend|wordstart|writable|x|xview|y)(?!(@|"
+            "#|"
+            "\\$|\"|\'|`))\\b");
+        rule.format = tclFormat;
+        highlightingRules.append(rule);
+
+        /* options */
+        tclFormat.setFontItalic(true);
+        rule.pattern.setPattern("\\s\\-\\w+\\b");
+        rule.format = tclFormat;
+        highlightingRules.append(rule);
+        tclFormat.setFontItalic(false);
+
+        tclFormat.setFontWeight(QFont::Bold);
+        rule.pattern.setPattern("\\[|\\]");
+        rule.format = tclFormat;
+        highlightingRules.append(rule);
+
+        tclFormat.setForeground(neutralColor);
+        rule.pattern.setPattern("\\{|\\}");
+        rule.format = tclFormat;
+        highlightingRules.append(rule);
+
+        tclFormat.setForeground(DarkYellow);
+        rule.pattern.setPattern("\\(|\\)");
+        rule.format = tclFormat;
+        highlightingRules.append(rule);
+
+        /* built-in functions */
+        tclFormat.setForeground(Magenta);
+        rule.pattern.setPattern(
+            "(?<!\\\\)(\\\\{2})*(?<!((#|\\$|@|\"|\'|`)(?!\\\\)))(\\\\(#|\\$|@|\"|\'|`)){0,1}\\K\\b(abs|acos|asin|atan|"
+            "atan2|bool|ceil|cos|cosh|double|entier|exp|floor|fmod|hypot|int|isqrt|log|log10|max|min|pow|rand|round|"
+            "sin|"
+            "sinh|sqrt|srand|tan|tanh|wide)(?!(@|#|\\$|\"|\'|`))\\b");
+        rule.format = tclFormat;
+        highlightingRules.append(rule);
+
+        /* variables (after "$")
+           NOTE: altQuoteFormat is used for handling backslash inside ${...} in highlightTclBlock() */
+        altQuoteFormat.setFontItalic(false);
+        altQuoteFormat.setForeground(Blue);
+        rule.pattern.setPattern(
+            "(?<!\\\\)(\\\\{2})*\\K(\\$(::)?[a-zA-Z0-9_]+((::[a-zA-Z0-9_]+)+)?\\b|\\$\\{[^\\}]+\\})");
+        rule.format = altQuoteFormat;
+        highlightingRules.append(rule);
+
+        /* escaped characters */
+        tclFormat.setFontWeight(QFont::Normal);
+        tclFormat.setForeground(Violet);
+        rule.pattern.setPattern("(\\\\{2})+|(\\\\{2})*\\\\[^\\\\]");
+        rule.format = tclFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "pascal") {
+        quoteMark.setPattern("'");
+
+        QTextCharFormat pascalFormat;
+
+        /* symbols */
+        pascalFormat.setForeground(DarkYellow);
+        rule.pattern.setPattern("[=\\+\\-*/<>\\^@#,;:\\.]");
+        rule.format = pascalFormat;
+        highlightingRules.append(rule);
+
+        /* numbers (including the scientific notation, hexadecimal, octal and binary numbers) */
+        pascalFormat.setForeground(Brown);
+        rule.pattern.setPattern(
+            "#?(?<=^|[^\\w\\d])((\\d*\\.?\\d+|\\d+\\.)((e|E)(\\+|-)?\\d+)?|\\$[0-9a-fA-F]+|&[0-7]+|%[0-1]+)(?=[^\\d]|$"
+            ")");
+        rule.format = pascalFormat;
+        highlightingRules.append(rule);
+
+        /* built-in functions */
+        pascalFormat.setFontWeight(QFont::Bold);
+        pascalFormat.setForeground(Magenta);
+        rule.pattern.setPattern(
+            "(?i)\\b(?<!(@|#|\\$))(abs|addr|arctan|card|chr|concat|copy|copyword|cos|cosh|countwords|createobject|"
+            "dirsep|"
+            "eof|eoln|exp|expo|fexpand|filematch|filepos|filesize|firstof|frac|getenv|getlasterror|hex|int|ioresult|"
+            "isalpha|isalphanum|isdigit|islower|isnull|isprint|isspace|isupper|isxdigit|keypressed|lastof|length|ln|"
+            "log|"
+            "locase|lowercase|ltrim|max|min|odd|ord|paramcount|paramstr|pi|platform|pos|pred|ptr|random|readkey|"
+            "reverse|"
+            "round|seed|sin|sinh|sizeof|sqr|sqrt|stopserverviceevent|succ|supported|swap|system|tan|tanh|trim|trunc|"
+            "unixplatform|upcase|uppercase|urldecode|version|wait|wherex|wherey)(?!(@|#|\\$))\\b");
+        rule.format = pascalFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "java") {
+        commentBoldFormat.setForeground(Red);
+        commentBoldFormat.setFontItalic(true);
+        commentBoldFormat.setFontWeight(QFont::Bold);
+
+        codeBlockFormat.setForeground(Violet);
+
+        /* characters */
+        rule.pattern.setPattern("\'([^\'\\\\]|\\\\[0-9abefnrtv\"\'\\\\]|\\\\u[0-9a-fA-F]{4})\'");
+        rule.format = altQuoteFormat;
+        highlightingRules.append(rule);
+
+        /* all classes */
+        QTextCharFormat javaFormat;
+        javaFormat.setForeground(DarkMagenta);
+        javaFormat.setFontWeight(QFont::Bold);
+
+        rule.pattern.setPattern(
+            "\\b(AboutEvent|AboutHandler|AbsentInformationException|AbstractAction|AbstractAnnotationValueVisitor6|"
+            "AbstractAnnotationValueVisitor7|AbstractAnnotationValueVisitor8|AbstractBorder|AbstractButton|"
+            "AbstractCellEditor|AbstractChronology|AbstractCollection|AbstractColorChooserPanel|AbstractDocument|"
+            "AbstractDocument.AttributeContext|AbstractDocument.Content|AbstractDocument.ElementEdit|"
+            "AbstractElementVisitor6|AbstractElementVisitor7|AbstractElementVisitor8|AbstractExecutorService|"
+            "AbstractInterruptibleChannel|AbstractLayoutCache|AbstractLayoutCache.NodeDimensions|AbstractList|"
+            "AbstractListModel|AbstractMap|AbstractMap.SimpleEntry|AbstractMap.SimpleImmutableEntry|"
+            "AbstractMarshallerImpl|"
+            "AbstractMethodError|AbstractOwnableSynchronizer|AbstractPreferences|AbstractProcessor|AbstractQueue|"
+            "AbstractQueuedLongSynchronizer|AbstractQueuedSynchronizer|AbstractRegionPainter|AbstractRegionPainter."
+            "PaintContext|AbstractRegionPainter.PaintContext.CacheMode|AbstractScriptEngine|AbstractSelectableChannel|"
+            "AbstractSelectionKey|AbstractSelector|AbstractSequentialList|AbstractSet|AbstractSpinnerModel|"
+            "AbstractTableModel|AbstractTypeVisitor6|AbstractTypeVisitor7|AbstractTypeVisitor8|AbstractUndoableEdit|"
+            "AbstractUnmarshallerImpl|AbstractView|AbstractWriter|AcceptPendingException|AccessControlContext|"
+            "AccessControlException|AccessController|AccessDeniedException|AccessException|Accessible|AccessibleAction|"
+            "AccessibleAttributeSequence|AccessibleBundle|AccessibleComponent|AccessibleContext|AccessibleEditableText|"
+            "AccessibleExtendedComponent|AccessibleExtendedTable|AccessibleExtendedText|AccessibleHyperlink|"
+            "AccessibleHypertext|AccessibleIcon|AccessibleKeyBinding|AccessibleObject|AccessibleRelation|"
+            "AccessibleRelationSet|AccessibleResourceBundle|AccessibleRole|AccessibleSelection|AccessibleState|"
+            "AccessibleStateSet|AccessibleStreamable|AccessibleTable|AccessibleTableModelChange|AccessibleText|"
+            "AccessibleTextSequence|AccessibleValue|AccessMode|AccountException|AccountExpiredException|"
+            "AccountLockedException|AccountNotFoundException|Acl|AclEntry|AclEntry|AclEntry.Builder|AclEntryFlag|"
+            "AclEntryPermission|AclEntryType|AclFileAttributeView|AclNotFoundException|Action|Action|ActionEvent|"
+            "ActionListener|ActionMap|ActionMapUIResource|Activatable|ActivateFailedException|ActivationDataFlavor|"
+            "ActivationDesc|ActivationException|ActivationGroup|ActivationGroup_Stub|ActivationGroupDesc|"
+            "ActivationGroupDesc.CommandEnvironment|ActivationGroupID|ActivationID|ActivationInstantiator|"
+            "ActivationMonitor|ActivationSystem|Activator|ACTIVE|ActiveEvent|ACTIVITY_COMPLETED|ACTIVITY_REQUIRED|"
+            "ActivityCompletedException|ActivityRequiredException|AdapterActivator|AdapterActivatorOperations|"
+            "AdapterAlreadyExists|AdapterAlreadyExistsHelper|AdapterInactive|AdapterInactiveHelper|"
+            "AdapterManagerIdHelper|"
+            "AdapterNameHelper|AdapterNonExistent|AdapterNonExistentHelper|AdapterStateHelper|AddressHelper|Addressing|"
+            "AddressingFeature|AddressingFeature.Responses|Adjustable|AdjustmentEvent|AdjustmentListener|Adler32|"
+            "AEADBadTagException|AffineTransform|AffineTransformOp|AlgorithmConstraints|AlgorithmMethod|"
+            "AlgorithmParameterGenerator|AlgorithmParameterGeneratorSpi|AlgorithmParameters|AlgorithmParameterSpec|"
+            "AlgorithmParametersSpi|AllPermission|AlphaComposite|AlreadyBound|AlreadyBoundException|"
+            "AlreadyBoundException|"
+            "AlreadyBoundHelper|AlreadyBoundHolder|AlreadyConnectedException|AncestorEvent|AncestorListener|"
+            "AnnotatedArrayType|AnnotatedConstruct|AnnotatedElement|AnnotatedParameterizedType|AnnotatedType|"
+            "AnnotatedTypeVariable|AnnotatedWildcardType|Annotation|Annotation|AnnotationFormatError|AnnotationMirror|"
+            "AnnotationTypeMismatchException|AnnotationValue|AnnotationValueVisitor|Any|AnyHolder|AnySeqHelper|"
+            "AnySeqHelper|AnySeqHolder|AppConfigurationEntry|AppConfigurationEntry.LoginModuleControlFlag|Appendable|"
+            "Applet|AppletContext|AppletInitializer|AppletStub|ApplicationException|Arc2D|Arc2D.Double|Arc2D.Float|"
+            "Area|"
+            "AreaAveragingScaleFilter|ARG_IN|ARG_INOUT|ARG_OUT|ArithmeticException|Array|Array|ArrayBlockingQueue|"
+            "ArrayDeque|ArrayIndexOutOfBoundsException|ArrayList|Arrays|ArrayStoreException|ArrayType|ArrayType|"
+            "AssertionError|AsyncBoxView|AsyncHandler|AsynchronousByteChannel|AsynchronousChannel|"
+            "AsynchronousChannelGroup|"
+            "AsynchronousChannelProvider|AsynchronousCloseException|AsynchronousFileChannel|"
+            "AsynchronousServerSocketChannel|AsynchronousSocketChannel|AtomicBoolean|AtomicInteger|AtomicIntegerArray|"
+            "AtomicIntegerFieldUpdater|AtomicLong|AtomicLongArray|AtomicLongFieldUpdater|AtomicMarkableReference|"
+            "AtomicMoveNotSupportedException|AtomicReference|AtomicReferenceArray|AtomicReferenceFieldUpdater|"
+            "AtomicStampedReference|AttachmentMarshaller|AttachmentPart|AttachmentUnmarshaller|Attr|Attribute|"
+            "Attribute|"
+            "Attribute|Attribute|AttributeChangeNotification|AttributeChangeNotificationFilter|"
+            "AttributedCharacterIterator|"
+            "AttributedCharacterIterator.Attribute|AttributedString|AttributeException|AttributeInUseException|"
+            "AttributeList|AttributeList|AttributeList|AttributeListImpl|AttributeModificationException|"
+            "AttributeNotFoundException|Attributes|Attributes|Attributes|Attributes.Name|Attributes2|Attributes2Impl|"
+            "AttributeSet|AttributeSet|AttributeSet.CharacterAttribute|AttributeSet.ColorAttribute|AttributeSet."
+            "FontAttribute|AttributeSet.ParagraphAttribute|AttributeSetUtilities|AttributesImpl|AttributeValueExp|"
+            "AttributeView|AudioClip|AudioFileFormat|AudioFileFormat.Type|AudioFileReader|AudioFileWriter|AudioFormat|"
+            "AudioFormat.Encoding|AudioInputStream|AudioPermission|AudioSystem|AuthenticationException|"
+            "AuthenticationException|AuthenticationNotSupportedException|Authenticator|Authenticator.RequestorType|"
+            "AuthorizeCallback|AuthPermission|AuthProvider|AutoCloseable|Autoscroll|AWTError|AWTEvent|AWTEventListener|"
+            "AWTEventListenerProxy|AWTEventMulticaster|AWTException|AWTKeyStroke|AWTPermission)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(BackingStoreException|BAD_CONTEXT|BAD_INV_ORDER|BAD_OPERATION|BAD_PARAM|BAD_POLICY|BAD_POLICY_TYPE|"
+            "BAD_"
+            "POLICY_VALUE|BAD_QOS|BAD_TYPECODE|BadAttributeValueExpException|BadBinaryOpValueExpException|BadKind|"
+            "BadLocationException|BadPaddingException|BadStringOperationException|BandCombineOp|BandedSampleModel|"
+            "Base64|"
+            "Base64.Decoder|Base64.Encoder|BaseRowSet|BaseStream|BasicArrowButton|BasicAttribute|BasicAttributes|"
+            "BasicBorders|BasicBorders.ButtonBorder|BasicBorders.FieldBorder|BasicBorders.MarginBorder|BasicBorders."
+            "MenuBarBorder|BasicBorders.RadioButtonBorder|BasicBorders.RolloverButtonBorder|BasicBorders."
+            "SplitPaneBorder|"
+            "BasicBorders.ToggleButtonBorder|BasicButtonListener|BasicButtonUI|BasicCheckBoxMenuItemUI|BasicCheckBoxUI|"
+            "BasicColorChooserUI|BasicComboBoxEditor|BasicComboBoxEditor.UIResource|BasicComboBoxRenderer|"
+            "BasicComboBoxRenderer.UIResource|BasicComboBoxUI|BasicComboPopup|BasicControl|BasicDesktopIconUI|"
+            "BasicDesktopPaneUI|BasicDirectoryModel|BasicEditorPaneUI|BasicFileAttributes|BasicFileAttributeView|"
+            "BasicFileChooserUI|BasicFormattedTextFieldUI|BasicGraphicsUtils|BasicHTML|BasicIconFactory|"
+            "BasicInternalFrameTitlePane|BasicInternalFrameUI|BasicLabelUI|BasicListUI|BasicLookAndFeel|BasicMenuBarUI|"
+            "BasicMenuItemUI|BasicMenuUI|BasicOptionPaneUI|BasicOptionPaneUI.ButtonAreaLayout|BasicPanelUI|"
+            "BasicPasswordFieldUI|BasicPermission|BasicPopupMenuSeparatorUI|BasicPopupMenuUI|BasicProgressBarUI|"
+            "BasicRadioButtonMenuItemUI|BasicRadioButtonUI|BasicRootPaneUI|BasicScrollBarUI|BasicScrollPaneUI|"
+            "BasicSeparatorUI|BasicSliderUI|BasicSpinnerUI|BasicSplitPaneDivider|BasicSplitPaneUI|BasicStroke|"
+            "BasicTabbedPaneUI|BasicTableHeaderUI|BasicTableUI|BasicTextAreaUI|BasicTextFieldUI|BasicTextPaneUI|"
+            "BasicTextUI|BasicTextUI.BasicCaret|BasicTextUI.BasicHighlighter|BasicToggleButtonUI|"
+            "BasicToolBarSeparatorUI|"
+            "BasicToolBarUI|BasicToolTipUI|BasicTreeUI|BasicViewportUI|BatchUpdateException|BeanContext|"
+            "BeanContextChild|"
+            "BeanContextChildComponentProxy|BeanContextChildSupport|BeanContextContainerProxy|BeanContextEvent|"
+            "BeanContextMembershipEvent|BeanContextMembershipListener|BeanContextProxy|"
+            "BeanContextServiceAvailableEvent|"
+            "BeanContextServiceProvider|BeanContextServiceProviderBeanInfo|BeanContextServiceRevokedEvent|"
+            "BeanContextServiceRevokedListener|BeanContextServices|BeanContextServicesListener|"
+            "BeanContextServicesSupport|"
+            "BeanContextServicesSupport.BCSSServiceProvider|BeanContextSupport|BeanContextSupport.BCSIterator|"
+            "BeanDescriptor|BeanInfo|Beans|BevelBorder|BiConsumer|Bidi|BiFunction|BigDecimal|BigInteger|BinaryOperator|"
+            "BinaryRefAddr|Binder|BindException|Binding|Binding|Binding|BindingHelper|BindingHolder|BindingIterator|"
+            "BindingIteratorHelper|BindingIteratorHolder|BindingIteratorOperations|BindingIteratorPOA|"
+            "BindingListHelper|"
+            "BindingListHolder|BindingProvider|Bindings|BindingType|BindingType|BindingTypeHelper|BindingTypeHolder|"
+            "BiPredicate|BitSet|Blob|BlockingDeque|BlockingQueue|BlockView|BMPImageWriteParam|Book|Boolean|"
+            "BooleanControl|"
+            "BooleanControl.Type|BooleanHolder|BooleanSeqHelper|BooleanSeqHolder|BooleanSupplier|BootstrapMethodError|"
+            "Border|BorderFactory|BorderLayout|BorderUIResource|BorderUIResource.BevelBorderUIResource|"
+            "BorderUIResource."
+            "CompoundBorderUIResource|BorderUIResource.EmptyBorderUIResource|BorderUIResource.EtchedBorderUIResource|"
+            "BorderUIResource.LineBorderUIResource|BorderUIResource.MatteBorderUIResource|BorderUIResource."
+            "TitledBorderUIResource|BoundedRangeModel|Bounds|Bounds|Box|Box.Filler|BoxedValueHelper|BoxLayout|BoxView|"
+            "BreakIterator|BreakIteratorProvider|BrokenBarrierException|Buffer|BufferCapabilities|BufferCapabilities."
+            "FlipContents|BufferedImage|BufferedImageFilter|BufferedImageOp|BufferedInputStream|BufferedOutputStream|"
+            "BufferedReader|BufferedWriter|BufferOverflowException|BufferPoolMXBean|BufferStrategy|"
+            "BufferUnderflowException|Button|ButtonGroup|ButtonModel|ButtonUI|Byte|ByteArrayInputStream|"
+            "ByteArrayOutputStream|ByteBuffer|ByteChannel|ByteHolder|ByteLookupTable|ByteOrder)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(C14NMethodParameterSpec|CachedRowSet|CacheRequest|CacheResponse|Calendar|Calendar.Builder|"
+            "CalendarDataProvider|CalendarNameProvider|Callable|CallableStatement|Callback|CallbackHandler|CallSite|"
+            "CancelablePrintJob|CancellationException|CancelledKeyException|CannotProceed|CannotProceedException|"
+            "CannotProceedHelper|CannotProceedHolder|CannotRedoException|CannotUndoException|CanonicalizationMethod|"
+            "Canvas|"
+            "CardLayout|Caret|CaretEvent|CaretListener|CDATASection|CellEditor|CellEditorListener|CellRendererPane|"
+            "Certificate|Certificate|Certificate|Certificate.CertificateRep|CertificateEncodingException|"
+            "CertificateEncodingException|CertificateException|CertificateException|CertificateExpiredException|"
+            "CertificateExpiredException|CertificateFactory|CertificateFactorySpi|CertificateNotYetValidException|"
+            "CertificateNotYetValidException|CertificateParsingException|CertificateParsingException|"
+            "CertificateRevokedException|CertPath|CertPath.CertPathRep|CertPathBuilder|CertPathBuilderException|"
+            "CertPathBuilderResult|CertPathBuilderSpi|CertPathChecker|CertPathParameters|"
+            "CertPathTrustManagerParameters|"
+            "CertPathValidator|CertPathValidatorException|CertPathValidatorException.BasicReason|"
+            "CertPathValidatorException.Reason|CertPathValidatorResult|CertPathValidatorSpi|CertSelector|CertStore|"
+            "CertStoreException|CertStoreParameters|CertStoreSpi|ChangedCharSetException|ChangeEvent|ChangeListener|"
+            "Channel|ChannelBinding|Channels|Character|Character.Subset|Character.UnicodeBlock|Character.UnicodeScript|"
+            "CharacterCodingException|CharacterData|CharacterIterator|Characters|CharArrayReader|CharArrayWriter|"
+            "CharBuffer|CharConversionException|CharHolder|CharSeqHelper|CharSeqHolder|CharSequence|Charset|"
+            "CharsetDecoder|"
+            "CharsetEncoder|CharsetProvider|Checkbox|CheckboxGroup|CheckboxMenuItem|CheckedInputStream|"
+            "CheckedOutputStream|"
+            "Checksum|Choice|ChoiceCallback|ChoiceFormat|Chromaticity|ChronoField|ChronoLocalDate|ChronoLocalDateTime|"
+            "Chronology|ChronoPeriod|ChronoUnit|ChronoZonedDateTime|Cipher|CipherInputStream|CipherOutputStream|"
+            "CipherSpi|"
+            "Class|ClassCastException|ClassCircularityError|ClassDefinition|ClassDesc|ClassFileTransformer|"
+            "ClassFormatError|ClassLoader|ClassLoaderRepository|ClassLoadingMXBean|ClassNotFoundException|ClassValue|"
+            "ClientInfoStatus|ClientRequestInfo|ClientRequestInfoOperations|ClientRequestInterceptor|"
+            "ClientRequestInterceptorOperations|Clip|Clipboard|ClipboardOwner|Clob|Clock|Cloneable|"
+            "CloneNotSupportedException|Closeable|ClosedByInterruptException|ClosedChannelException|"
+            "ClosedDirectoryStreamException|ClosedFileSystemException|ClosedSelectorException|"
+            "ClosedWatchServiceException|"
+            "CMMException|Codec|CodecFactory|CodecFactoryHelper|CodecFactoryOperations|CodecOperations|"
+            "CoderMalfunctionError|CoderResult|CODESET_INCOMPATIBLE|CodeSets|CodeSigner|CodeSource|CodingErrorAction|"
+            "CollapsedStringAdapter|CollationElementIterator|CollationKey|Collator|CollatorProvider|Collection|"
+            "CollectionCertStoreParameters|Collections|Collector|Collector.Characteristics|Collectors|Color|"
+            "ColorChooserComponentFactory|ColorChooserUI|ColorConvertOp|ColorModel|ColorSelectionModel|ColorSpace|"
+            "ColorSupported|ColorType|ColorUIResource|ComboBoxEditor|ComboBoxModel|ComboBoxUI|ComboPopup|COMM_FAILURE|"
+            "CommandInfo|CommandMap|CommandObject|Comment|Comment|CommonDataSource|CommunicationException|Comparable|"
+            "Comparator|Compilable|CompilationMXBean|CompiledScript|Compiler|CompletableFuture|CompletableFuture."
+            "AsynchronousCompletionTask|Completion|CompletionException|CompletionHandler|Completions|CompletionService|"
+            "CompletionStage|CompletionStatus|CompletionStatusHelper|Component|Component.BaselineResizeBehavior|"
+            "ComponentAdapter|ComponentColorModel|ComponentEvent|ComponentIdHelper|ComponentInputMap|"
+            "ComponentInputMapUIResource|ComponentListener|ComponentOrientation|ComponentSampleModel|ComponentUI|"
+            "ComponentView|Composite|CompositeContext|CompositeData|CompositeDataInvocationHandler|"
+            "CompositeDataSupport|"
+            "CompositeDataView|CompositeName|CompositeType|CompositeView|CompoundBorder|CompoundControl|"
+            "CompoundControl."
+            "Type|CompoundEdit|CompoundName|Compression|ConcurrentHashMap|ConcurrentHashMap.KeySetView|"
+            "ConcurrentLinkedDeque|ConcurrentLinkedQueue|ConcurrentMap|ConcurrentModificationException|"
+            "ConcurrentNavigableMap|ConcurrentSkipListMap|ConcurrentSkipListSet|Condition|Configuration|Configuration."
+            "Parameters|ConfigurationException|ConfigurationSpi|ConfirmationCallback|ConnectException|ConnectException|"
+            "ConnectIOException|Connection|ConnectionEvent|ConnectionEventListener|ConnectionPendingException|"
+            "ConnectionPoolDataSource|Console|ConsoleHandler|ConstantCallSite|Constructor|ConstructorProperties|"
+            "Consumer|"
+            "Container|ContainerAdapter|ContainerEvent|ContainerListener|ContainerOrderFocusTraversalPolicy|"
+            "ContentHandler|"
+            "ContentHandler|ContentHandlerFactory|ContentModel|Context|Context|ContextList|ContextNotEmptyException|"
+            "ContextualRenderedImageFactory|Control|Control|Control.Type|ControlFactory|ControllerEventListener|"
+            "ConvolveOp|"
+            "CookieHandler|CookieHolder|CookieManager|CookiePolicy|CookieStore|Copies|CopiesSupported|"
+            "CopyOnWriteArrayList|"
+            "CopyOnWriteArraySet|CopyOption|CountDownLatch|CountedCompleter|CounterMonitor|CounterMonitorMBean|CRC32|"
+            "CredentialException|CredentialExpiredException|CredentialNotFoundException|CRL|CRLException|CRLReason|"
+            "CRLSelector|CropImageFilter|CryptoPrimitive|CSS|CSS.Attribute|CTX_RESTRICT_SCOPE|CubicCurve2D|"
+            "CubicCurve2D."
+            "Double|CubicCurve2D.Float|Currency|CurrencyNameProvider|Current|Current|Current|CurrentHelper|"
+            "CurrentHelper|"
+            "CurrentHelper|CurrentHolder|CurrentOperations|CurrentOperations|CurrentOperations|Cursor|Customizer|"
+            "CustomMarshal|CustomValue|CyclicBarrier)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(Data|DATA_CONVERSION|DatabaseMetaData|DataBindingException|DataBuffer|DataBufferByte|DataBufferDouble|"
+            "DataBufferFloat|DataBufferInt|DataBufferShort|DataBufferUShort|DataContentHandler|"
+            "DataContentHandlerFactory|"
+            "DataFlavor|DataFormatException|DatagramChannel|DatagramPacket|DatagramSocket|DatagramSocketImpl|"
+            "DatagramSocketImplFactory|DataHandler|DataInput|DataInputStream|DataInputStream|DataLine|DataLine.Info|"
+            "DataOutput|DataOutputStream|DataOutputStream|DataSource|DataSource|DataTruncation|"
+            "DatatypeConfigurationException|DatatypeConstants|DatatypeConstants.Field|DatatypeConverter|"
+            "DatatypeConverterInterface|DatatypeFactory|Date|Date|DateFormat|DateFormat.Field|DateFormatProvider|"
+            "DateFormatSymbols|DateFormatSymbolsProvider|DateFormatter|DateTimeAtCompleted|DateTimeAtCreation|"
+            "DateTimeAtProcessing|DateTimeException|DateTimeFormatter|DateTimeFormatterBuilder|DateTimeParseException|"
+            "DateTimeSyntax|DayOfWeek|DebugGraphics|DecimalFormat|DecimalFormatSymbols|DecimalFormatSymbolsProvider|"
+            "DecimalStyle|DeclaredType|DeclHandler|DefaultBoundedRangeModel|DefaultButtonModel|DefaultCaret|"
+            "DefaultCellEditor|DefaultColorSelectionModel|DefaultComboBoxModel|DefaultDesktopManager|DefaultEditorKit|"
+            "DefaultEditorKit.BeepAction|DefaultEditorKit.CopyAction|DefaultEditorKit.CutAction|DefaultEditorKit."
+            "DefaultKeyTypedAction|DefaultEditorKit.InsertBreakAction|DefaultEditorKit.InsertContentAction|"
+            "DefaultEditorKit.InsertTabAction|DefaultEditorKit.PasteAction|DefaultFocusManager|"
+            "DefaultFocusTraversalPolicy|"
+            "DefaultFormatter|DefaultFormatterFactory|DefaultHandler|DefaultHandler2|DefaultHighlighter|"
+            "DefaultHighlighter."
+            "DefaultHighlightPainter|DefaultKeyboardFocusManager|DefaultListCellRenderer|DefaultListCellRenderer."
+            "UIResource|DefaultListModel|DefaultListSelectionModel|DefaultLoaderRepository|DefaultLoaderRepository|"
+            "DefaultMenuLayout|DefaultMetalTheme|DefaultMutableTreeNode|DefaultPersistenceDelegate|DefaultRowSorter|"
+            "DefaultRowSorter.ModelWrapper|DefaultSingleSelectionModel|DefaultStyledDocument|DefaultStyledDocument."
+            "AttributeUndoableEdit|DefaultStyledDocument.ElementSpec|DefaultTableCellRenderer|DefaultTableCellRenderer."
+            "UIResource|DefaultTableColumnModel|DefaultTableModel|DefaultTextUI|DefaultTreeCellEditor|"
+            "DefaultTreeCellRenderer|DefaultTreeModel|DefaultTreeSelectionModel|DefaultValidationEventHandler|"
+            "DefinitionKind|DefinitionKindHelper|Deflater|DeflaterInputStream|DeflaterOutputStream|Delayed|DelayQueue|"
+            "Delegate|Delegate|Delegate|DelegationPermission|Deprecated|Deque|Descriptor|DescriptorAccess|"
+            "DescriptorKey|"
+            "DescriptorRead|DescriptorSupport|DESedeKeySpec|DesignMode|DESKeySpec|Desktop|Desktop.Action|DesktopIconUI|"
+            "DesktopManager|DesktopPaneUI|Destination|Destroyable|DestroyFailedException|Detail|DetailEntry|DGC|"
+            "DHGenParameterSpec|DHKey|DHParameterSpec|DHPrivateKey|DHPrivateKeySpec|DHPublicKey|DHPublicKeySpec|"
+            "Diagnostic|"
+            "Diagnostic.Kind|DiagnosticCollector|DiagnosticListener|Dialog|Dialog.ModalExclusionType|Dialog."
+            "ModalityType|"
+            "DialogTypeSelection|Dictionary|DigestException|DigestInputStream|DigestMethod|DigestMethodParameterSpec|"
+            "DigestOutputStream|Dimension|Dimension2D|DimensionUIResource|DirContext|DirectColorModel|"
+            "DirectoryIteratorException|DirectoryManager|DirectoryNotEmptyException|DirectoryStream|DirectoryStream."
+            "Filter|"
+            "DirObjectFactory|DirStateFactory|DirStateFactory.Result|DISCARDING|Dispatch|DisplayMode|DnDConstants|Doc|"
+            "DocAttribute|DocAttributeSet|DocFlavor|DocFlavor.BYTE_ARRAY|DocFlavor.CHAR_ARRAY|DocFlavor.INPUT_STREAM|"
+            "DocFlavor.READER|DocFlavor.SERVICE_FORMATTED|DocFlavor.STRING|DocFlavor.URL|DocPrintJob|Document|Document|"
+            "DocumentationTool|DocumentationTool.DocumentationTask|DocumentationTool.Location|DocumentBuilder|"
+            "DocumentBuilderFactory|Documented|DocumentEvent|DocumentEvent|DocumentEvent.ElementChange|DocumentEvent."
+            "EventType|DocumentFilter|DocumentFilter.FilterBypass|DocumentFragment|DocumentHandler|DocumentListener|"
+            "DocumentName|DocumentParser|DocumentType|DocumentView|DomainCombiner|DomainLoadStoreParameter|"
+            "DomainManager|"
+            "DomainManagerOperations|DOMConfiguration|DOMCryptoContext|DOMError|DOMErrorHandler|DOMException|"
+            "DomHandler|"
+            "DOMImplementation|DOMImplementationList|DOMImplementationLS|DOMImplementationRegistry|"
+            "DOMImplementationSource|"
+            "DOMLocator|DOMLocator|DOMResult|DOMSignContext|DOMSource|DOMStringList|DOMStructure|DOMURIReference|"
+            "DOMValidateContext|DosFileAttributes|DosFileAttributeView|Double|DoubleAccumulator|DoubleAdder|"
+            "DoubleBinaryOperator|DoubleBuffer|DoubleConsumer|DoubleFunction|DoubleHolder|DoublePredicate|"
+            "DoubleSeqHelper|"
+            "DoubleSeqHolder|DoubleStream|DoubleStream.Builder|DoubleSummaryStatistics|DoubleSupplier|"
+            "DoubleToIntFunction|"
+            "DoubleToLongFunction|DoubleUnaryOperator|DragGestureEvent|DragGestureListener|DragGestureRecognizer|"
+            "DragSource|DragSourceAdapter|DragSourceContext|DragSourceDragEvent|DragSourceDropEvent|DragSourceEvent|"
+            "DragSourceListener|DragSourceMotionListener|Driver|DriverAction|DriverManager|DriverPropertyInfo|DropMode|"
+            "DropTarget|DropTarget.DropTargetAutoScroller|DropTargetAdapter|DropTargetContext|DropTargetDragEvent|"
+            "DropTargetDropEvent|DropTargetEvent|DropTargetListener|DSAGenParameterSpec|DSAKey|DSAKeyPairGenerator|"
+            "DSAParameterSpec|DSAParams|DSAPrivateKey|DSAPrivateKeySpec|DSAPublicKey|DSAPublicKeySpec|DTD|DTD|"
+            "DTDConstants|"
+            "DTDHandler|DuplicateFormatFlagsException|DuplicateName|DuplicateNameHelper|Duration|Duration|"
+            "DynamicImplementation|DynamicImplementation|DynamicMBean|DynAny|DynAny|DynAnyFactory|DynAnyFactoryHelper|"
+            "DynAnyFactoryOperations|DynAnyHelper|DynAnyOperations|DynAnySeqHelper|DynArray|DynArray|DynArrayHelper|"
+            "DynArrayOperations|DynEnum|DynEnum|DynEnumHelper|DynEnumOperations|DynFixed|DynFixed|DynFixedHelper|"
+            "DynFixedOperations|DynSequence|DynSequence|DynSequenceHelper|DynSequenceOperations|DynStruct|DynStruct|"
+            "DynStructHelper|DynStructOperations|DynUnion|DynUnion|DynUnionHelper|DynUnionOperations|DynValue|DynValue|"
+            "DynValueBox|DynValueBoxOperations|DynValueCommon|DynValueCommonOperations|DynValueHelper|"
+            "DynValueOperations)(?"
+            "!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(ECField|ECFieldF2m|ECFieldFp|ECGenParameterSpec|ECKey|ECParameterSpec|ECPoint|ECPrivateKey|"
+            "ECPrivateKeySpec|ECPublicKey|ECPublicKeySpec|EditorKit|Element|Element|Element|Element|Element|"
+            "ElementFilter|"
+            "ElementIterator|ElementKind|ElementKindVisitor6|ElementKindVisitor7|ElementKindVisitor8|Elements|"
+            "ElementScanner6|ElementScanner7|ElementScanner8|ElementType|ElementVisitor|Ellipse2D|Ellipse2D.Double|"
+            "Ellipse2D.Float|EllipticCurve|EmptyBorder|EmptyStackException|EncodedKeySpec|Encoder|Encoding|ENCODING_"
+            "CDR_"
+            "ENCAPS|EncryptedPrivateKeyInfo|EndDocument|EndElement|Endpoint|EndpointContext|EndpointReference|Entity|"
+            "Entity|EntityDeclaration|EntityReference|EntityReference|EntityResolver|EntityResolver2|Enum|"
+            "EnumConstantNotPresentException|EnumControl|EnumControl.Type|Enumeration|EnumMap|EnumSet|EnumSyntax|"
+            "Environment|EOFException|Era|Error|ErrorHandler|ErrorListener|ErrorManager|ErrorType|EtchedBorder|Event|"
+            "Event|"
+            "EventContext|EventDirContext|EventException|EventFilter|EventHandler|EventListener|EventListener|"
+            "EventListenerList|EventListenerProxy|EventObject|EventQueue|EventReaderDelegate|EventSetDescriptor|"
+            "EventTarget|ExcC14NParameterSpec|Exception|ExceptionDetailMessage|ExceptionInInitializerError|"
+            "ExceptionList|"
+            "ExceptionListener|Exchanger|Executable|ExecutableElement|ExecutableType|ExecutionException|Executor|"
+            "ExecutorCompletionService|Executors|ExecutorService|ExemptionMechanism|ExemptionMechanismException|"
+            "ExemptionMechanismSpi|ExpandVetoException|ExportException|Expression|ExtendedRequest|ExtendedResponse|"
+            "ExtendedSSLSession|Extension|Externalizable|FactoryConfigurationError|FactoryConfigurationError|"
+            "FailedLoginException|FaultAction|FeatureDescriptor|Fidelity|Field|FieldNameHelper|FieldNameHelper|"
+            "FieldPosition|FieldView|File|FileAlreadyExistsException|FileAttribute|FileAttributeView|"
+            "FileCacheImageInputStream|FileCacheImageOutputStream|FileChannel|FileChannel.MapMode|FileChooserUI|"
+            "FileDataSource|FileDescriptor|FileDialog|FileFilter|FileFilter|FileHandler|FileImageInputStream|"
+            "FileImageOutputStream|FileInputStream|FileLock|FileLockInterruptionException|FileNameExtensionFilter|"
+            "FilenameFilter|FileNameMap|FileNotFoundException|FileObject|FileOutputStream|FileOwnerAttributeView|"
+            "FilePermission|Filer|FileReader|FilerException|Files|FileStore|FileStoreAttributeView|FileSystem|"
+            "FileSystemAlreadyExistsException|FileSystemException|FileSystemLoopException|FileSystemNotFoundException|"
+            "FileSystemProvider|FileSystems|FileSystemView|FileTime|FileTypeDetector|FileTypeMap|FileView|"
+            "FileVisitOption|"
+            "FileVisitor|FileVisitResult|FileWriter|Filter|FilteredImageSource|FilteredRowSet|FilterInputStream|"
+            "FilterOutputStream|FilterReader|FilterWriter|Finishings|FixedHeightLayoutCache|FixedHolder|"
+            "FlatteningPathIterator|FlavorEvent|FlavorException|FlavorListener|FlavorMap|FlavorTable|Float|FloatBuffer|"
+            "FloatControl|FloatControl.Type|FloatHolder|FloatSeqHelper|FloatSeqHolder|FlowLayout|FlowView|FlowView."
+            "FlowStrategy|Flushable|FocusAdapter|FocusEvent|FocusListener|FocusManager|FocusTraversalPolicy|Font|"
+            "FontFormatException|FontMetrics|FontRenderContext|FontUIResource|ForkJoinPool|ForkJoinPool."
+            "ForkJoinWorkerThreadFactory|ForkJoinPool.ManagedBlocker|ForkJoinTask|ForkJoinWorkerThread|Format|Format."
+            "Field|"
+            "FormatConversionProvider|FormatFlagsConversionMismatchException|FormatMismatch|FormatMismatchHelper|"
+            "FormatStyle|Formattable|FormattableFlags|Formatter|Formatter|Formatter.BigDecimalLayoutForm|"
+            "FormatterClosedException|FormSubmitEvent|FormSubmitEvent.MethodType|FormView|ForwardingFileObject|"
+            "ForwardingJavaFileManager|ForwardingJavaFileObject|ForwardRequest|ForwardRequest|ForwardRequestHelper|"
+            "ForwardRequestHelper|Frame|FREE_MEM|Function|FunctionalInterface|Future|FutureTask|GapContent|"
+            "GarbageCollectorMXBean|GatheringByteChannel|GaugeMonitor|GaugeMonitorMBean|GCMParameterSpec|GeneralPath|"
+            "GeneralSecurityException|Generated|GenericArrayType|GenericDeclaration|GenericSignatureFormatError|"
+            "GlyphJustificationInfo|GlyphMetrics|GlyphVector|GlyphView|GlyphView.GlyphPainter|GradientPaint|"
+            "GraphicAttribute|Graphics|Graphics2D|GraphicsConfigTemplate|GraphicsConfiguration|GraphicsDevice|"
+            "GraphicsDevice.WindowTranslucency|GraphicsEnvironment|GrayFilter|GregorianCalendar|GridBagConstraints|"
+            "GridBagLayout|GridBagLayoutInfo|GridLayout|Group|GroupLayout|GroupLayout.Alignment|GroupPrincipal|"
+            "GSSContext|"
+            "GSSCredential|GSSException|GSSManager|GSSName|Guard|GuardedObject|GZIPInputStream|GZIPOutputStream)(?!(@|#"
+            "|\\$"
+            "))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(Handler|Handler|HandlerBase|HandlerChain|HandlerResolver|HandshakeCompletedEvent|"
+            "HandshakeCompletedListener|HasControls|HashAttributeSet|HashDocAttributeSet|HashMap|"
+            "HashPrintJobAttributeSet|"
+            "HashPrintRequestAttributeSet|HashPrintServiceAttributeSet|HashSet|Hashtable|HeadlessException|"
+            "HexBinaryAdapter|HierarchyBoundsAdapter|HierarchyBoundsListener|HierarchyEvent|HierarchyListener|"
+            "Highlighter|"
+            "Highlighter.Highlight|Highlighter.HighlightPainter|HijrahChronology|HijrahDate|HijrahEra|"
+            "HMACParameterSpec|"
+            "Holder|HOLDING|HostnameVerifier|HTML|HTML.Attribute|HTML.Tag|HTML.UnknownTag|HTMLDocument|HTMLDocument."
+            "Iterator|HTMLEditorKit|HTMLEditorKit.HTMLFactory|HTMLEditorKit.HTMLTextAction|HTMLEditorKit."
+            "InsertHTMLTextAction|HTMLEditorKit.LinkController|HTMLEditorKit.Parser|HTMLEditorKit.ParserCallback|"
+            "HTMLFrameHyperlinkEvent|HTMLWriter|HTTPBinding|HttpContext|HttpCookie|HTTPException|HttpExchange|"
+            "HttpHandler|"
+            "HttpRetryException|HttpsURLConnection|HttpURLConnection|HyperlinkEvent|HyperlinkEvent.EventType|"
+            "HyperlinkListener|ICC_ColorSpace|ICC_Profile|ICC_ProfileGray|ICC_ProfileRGB|Icon|IconUIResource|IconView|"
+            "ID_"
+            "ASSIGNMENT_POLICY_ID|ID_UNIQUENESS_POLICY_ID|IdAssignmentPolicy|IdAssignmentPolicyOperations|"
+            "IdAssignmentPolicyValue|IdentifierHelper|Identity|IdentityHashMap|IdentityScope|IDLEntity|IDLType|"
+            "IDLTypeHelper|IDLTypeOperations|IDN|IdUniquenessPolicy|IdUniquenessPolicyOperations|"
+            "IdUniquenessPolicyValue|"
+            "IIOByteBuffer|IIOException|IIOImage|IIOInvalidTreeException|IIOMetadata|IIOMetadataController|"
+            "IIOMetadataFormat|IIOMetadataFormatImpl|IIOMetadataNode|IIOParam|IIOParamController|"
+            "IIOReadProgressListener|"
+            "IIOReadUpdateListener|IIOReadWarningListener|IIORegistry|IIOServiceProvider|IIOWriteProgressListener|"
+            "IIOWriteWarningListener|IllegalAccessError|IllegalAccessException|IllegalArgumentException|"
+            "IllegalBlockingModeException|IllegalBlockSizeException|IllegalChannelGroupException|"
+            "IllegalCharsetNameException|IllegalClassFormatException|IllegalComponentStateException|"
+            "IllegalFormatCodePointException|IllegalFormatConversionException|IllegalFormatException|"
+            "IllegalFormatFlagsException|IllegalFormatPrecisionException|IllegalFormatWidthException|"
+            "IllegalMonitorStateException|IllegalPathStateException|IllegalSelectorException|IllegalStateException|"
+            "IllegalThreadStateException|IllformedLocaleException|Image|ImageCapabilities|ImageConsumer|ImageFilter|"
+            "ImageGraphicAttribute|ImageIcon|ImageInputStream|ImageInputStreamImpl|ImageInputStreamSpi|ImageIO|"
+            "ImageObserver|ImageOutputStream|ImageOutputStreamImpl|ImageOutputStreamSpi|ImageProducer|ImageReader|"
+            "ImageReaderSpi|ImageReaderWriterSpi|ImageReadParam|ImageTranscoder|ImageTranscoderSpi|ImageTypeSpecifier|"
+            "ImageView|ImageWriteParam|ImageWriter|ImageWriterSpi|ImagingOpException|ImmutableDescriptor|IMP_LIMIT|"
+            "IMPLICIT_ACTIVATION_POLICY_ID|ImplicitActivationPolicy|ImplicitActivationPolicyOperations|"
+            "ImplicitActivationPolicyValue|INACTIVE|IncompatibleClassChangeError|IncompleteAnnotationException|"
+            "InconsistentTypeCode|InconsistentTypeCode|InconsistentTypeCodeHelper|IndexColorModel|"
+            "IndexedPropertyChangeEvent|IndexedPropertyDescriptor|IndexOutOfBoundsException|IndirectionException|"
+            "Inet4Address|Inet6Address|InetAddress|InetSocketAddress|Inflater|InflaterInputStream|InflaterOutputStream|"
+            "InheritableThreadLocal|Inherited|InitialContext|InitialContextFactory|InitialContextFactoryBuilder|"
+            "InitialDirContext|INITIALIZE|InitialLdapContext|InitParam|InlineView|InputContext|InputEvent|InputMap|"
+            "InputMapUIResource|InputMethod|InputMethodContext|InputMethodDescriptor|InputMethodEvent|"
+            "InputMethodHighlight|"
+            "InputMethodListener|InputMethodRequests|InputMismatchException|InputSource|InputStream|InputStream|"
+            "InputStream|InputStreamReader|InputSubset|InputVerifier|Insets|InsetsUIResource|"
+            "InstanceAlreadyExistsException|InstanceNotFoundException|Instant|InstantiationError|"
+            "InstantiationException|"
+            "Instrument|Instrumentation|InsufficientResourcesException|IntBinaryOperator|IntBuffer|IntConsumer|Integer|"
+            "IntegerSyntax|Interceptor|InterceptorOperations|InterfaceAddress|INTERNAL|InternalError|"
+            "InternalFrameAdapter|"
+            "InternalFrameEvent|InternalFrameFocusTraversalPolicy|InternalFrameListener|InternalFrameUI|"
+            "InternationalFormatter|InterruptedByTimeoutException|InterruptedException|InterruptedIOException|"
+            "InterruptedNamingException|InterruptibleChannel|IntersectionType|INTF_REPOS|IntFunction|IntHolder|"
+            "IntPredicate|IntrospectionException|IntrospectionException|Introspector|IntStream|IntStream.Builder|"
+            "IntSummaryStatistics|IntSupplier|IntToDoubleFunction|IntToLongFunction|IntUnaryOperator|INV_FLAG|INV_"
+            "IDENT|"
+            "INV_OBJREF|INV_POLICY|Invalid|INVALID_ACTIVITY|INVALID_TRANSACTION|InvalidActivityException|"
+            "InvalidAddress|"
+            "InvalidAddressHelper|InvalidAddressHolder|InvalidAlgorithmParameterException|InvalidApplicationException|"
+            "InvalidAttributeIdentifierException|InvalidAttributesException|InvalidAttributeValueException|"
+            "InvalidAttributeValueException|InvalidClassException|InvalidDnDOperationException|InvalidKeyException|"
+            "InvalidKeyException|InvalidKeySpecException|InvalidMarkException|InvalidMidiDataException|InvalidName|"
+            "InvalidName|InvalidName|InvalidNameException|InvalidNameHelper|InvalidNameHelper|InvalidNameHolder|"
+            "InvalidObjectException|InvalidOpenTypeException|InvalidParameterException|InvalidParameterSpecException|"
+            "InvalidPathException|InvalidPolicy|InvalidPolicyHelper|InvalidPreferencesFormatException|"
+            "InvalidPropertiesFormatException|InvalidRelationIdException|InvalidRelationServiceException|"
+            "InvalidRelationTypeException|InvalidRoleInfoException|InvalidRoleValueException|"
+            "InvalidSearchControlsException|InvalidSearchFilterException|InvalidSeq|InvalidSlot|InvalidSlotHelper|"
+            "InvalidTargetObjectTypeException|InvalidTransactionException|InvalidTypeForEncoding|"
+            "InvalidTypeForEncodingHelper|InvalidValue|InvalidValue|InvalidValueHelper|Invocable|InvocationEvent|"
+            "InvocationHandler|InvocationTargetException|InvokeHandler|Invoker|IOError|IOException|IOR|IORHelper|"
+            "IORHolder|"
+            "IORInfo|IORInfoOperations|IORInterceptor|IORInterceptor_3_0|IORInterceptor_3_0Helper|IORInterceptor_3_"
+            "0Holder|"
+            "IORInterceptor_3_0Operations|IORInterceptorOperations|IRObject|IRObjectOperations|IsoChronology|IsoEra|"
+            "IsoFields|IstringHelper|ItemEvent|ItemListener|ItemSelectable|Iterable|Iterator|IvParameterSpec|"
+            "JapaneseChronology|JapaneseDate|JapaneseEra|JApplet|JarEntry|JarException|JarFile|JarInputStream|"
+            "JarOutputStream|JarURLConnection|JavaCompiler|JavaCompiler.CompilationTask|JavaFileManager|"
+            "JavaFileManager."
+            "Location|JavaFileObject|JavaFileObject.Kind|JAXB|JAXBContext|JAXBElement|JAXBElement.GlobalScope|"
+            "JAXBException|JAXBIntrospector|JAXBPermission|JAXBResult|JAXBSource|JButton|JCheckBox|JCheckBoxMenuItem|"
+            "JColorChooser|JComboBox|JComboBox.KeySelectionManager|JComponent|JdbcRowSet|JDBCType|JDesktopPane|JDialog|"
+            "JEditorPane|JFileChooser|JFormattedTextField|JFormattedTextField.AbstractFormatter|JFormattedTextField."
+            "AbstractFormatterFactory|JFrame|JInternalFrame|JInternalFrame.JDesktopIcon|JLabel|JLayer|JLayeredPane|"
+            "JList|"
+            "JList.DropLocation|JMenu|JMenuBar|JMenuItem|JMException|JMRuntimeException|JMX|JMXAddressable|"
+            "JMXAuthenticator|JMXConnectionNotification|JMXConnector|JMXConnectorFactory|JMXConnectorProvider|"
+            "JMXConnectorServer|JMXConnectorServerFactory|JMXConnectorServerMBean|JMXConnectorServerProvider|"
+            "JMXPrincipal|"
+            "JMXProviderException|JMXServerErrorException|JMXServiceURL|JobAttributes|JobAttributes."
+            "DefaultSelectionType|"
+            "JobAttributes.DestinationType|JobAttributes.DialogType|JobAttributes.MultipleDocumentHandlingType|"
+            "JobAttributes.SidesType|JobHoldUntil|JobImpressions|JobImpressionsCompleted|JobImpressionsSupported|"
+            "JobKOctets|JobKOctetsProcessed|JobKOctetsSupported|JobMediaSheets|JobMediaSheetsCompleted|"
+            "JobMediaSheetsSupported|JobMessageFromOperator|JobName|JobOriginatingUserName|JobPriority|"
+            "JobPrioritySupported|JobSheets|JobState|JobStateReason|JobStateReasons|Joinable|JoinRowSet|JOptionPane|"
+            "JPanel|"
+            "JPasswordField|JPEGHuffmanTable|JPEGImageReadParam|JPEGImageWriteParam|JPEGQTable|JPopupMenu|JPopupMenu."
+            "Separator|JProgressBar|JRadioButton|JRadioButtonMenuItem|JRootPane|JScrollBar|JScrollPane|JSeparator|"
+            "JSlider|"
+            "JSpinner|JSpinner.DateEditor|JSpinner.DefaultEditor|JSpinner.ListEditor|JSpinner.NumberEditor|JSplitPane|"
+            "JTabbedPane|JTable|JTable.DropLocation|JTable.PrintMode|JTableHeader|JTextArea|JTextComponent|"
+            "JTextComponent."
+            "DropLocation|JTextComponent.KeyBinding|JTextField|JTextPane|JToggleButton|JToggleButton.ToggleButtonModel|"
+            "JToolBar|JToolBar.Separator|JToolTip|JTree|JTree.DropLocation|JTree.DynamicUtilTreeNode|JTree."
+            "EmptySelectionModel|JulianFields|JViewport|JWindow)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(KerberosKey|KerberosPrincipal|KerberosTicket|Kernel|Key|KeyAdapter|KeyAgreement|KeyAgreementSpi|"
+            "KeyAlreadyExistsException|KeyboardFocusManager|KeyEvent|KeyEventDispatcher|KeyEventPostProcessor|"
+            "KeyException|"
+            "KeyFactory|KeyFactorySpi|KeyGenerator|KeyGeneratorSpi|KeyInfo|KeyInfoFactory|KeyListener|"
+            "KeyManagementException|KeyManager|KeyManagerFactory|KeyManagerFactorySpi|Keymap|KeyName|KeyPair|"
+            "KeyPairGenerator|KeyPairGeneratorSpi|KeyRep|KeyRep.Type|KeySelector|KeySelector.Purpose|"
+            "KeySelectorException|"
+            "KeySelectorResult|KeySpec|KeyStore|KeyStore.Builder|KeyStore.CallbackHandlerProtection|KeyStore.Entry|"
+            "KeyStore.Entry.Attribute|KeyStore.LoadStoreParameter|KeyStore.PasswordProtection|KeyStore.PrivateKeyEntry|"
+            "KeyStore.ProtectionParameter|KeyStore.SecretKeyEntry|KeyStore.TrustedCertificateEntry|"
+            "KeyStoreBuilderParameters|KeyStoreException|KeyStoreSpi|KeyStroke|KeyTab|KeyValue|Label|LabelUI|LabelView|"
+            "LambdaConversionException|LambdaMetafactory|LanguageCallback|LastOwnerException|LayeredHighlighter|"
+            "LayeredHighlighter.LayerPainter|LayerUI|LayoutFocusTraversalPolicy|LayoutManager|LayoutManager2|"
+            "LayoutPath|"
+            "LayoutQueue|LayoutStyle|LayoutStyle.ComponentPlacement|LDAPCertStoreParameters|LdapContext|LdapName|"
+            "LdapReferralException|Lease|Level|LexicalHandler|LIFESPAN_POLICY_ID|LifespanPolicy|"
+            "LifespanPolicyOperations|"
+            "LifespanPolicyValue|LimitExceededException|Line|Line.Info|Line2D|Line2D.Double|Line2D.Float|"
+            "LinearGradientPaint|LineBorder|LineBreakMeasurer|LineEvent|LineEvent.Type|LineListener|LineMetrics|"
+            "LineNumberInputStream|LineNumberReader|LineUnavailableException|LinkageError|LinkedBlockingDeque|"
+            "LinkedBlockingQueue|LinkedHashMap|LinkedHashSet|LinkedList|LinkedTransferQueue|LinkException|"
+            "LinkLoopException|LinkOption|LinkPermission|LinkRef|List|List|ListCellRenderer|ListDataEvent|"
+            "ListDataListener|"
+            "ListenerNotFoundException|ListIterator|ListModel|ListResourceBundle|ListSelectionEvent|"
+            "ListSelectionListener|"
+            "ListSelectionModel|ListUI|ListView|LoaderHandler|LocalDate|LocalDateTime|Locale|Locale.Builder|Locale."
+            "Category|Locale.FilteringMode|Locale.LanguageRange|LocaleNameProvider|LocaleServiceProvider|LocalObject|"
+            "LocalTime|LocateRegistry|Location|LOCATION_FORWARD|Locator|Locator2|Locator2Impl|LocatorImpl|Lock|"
+            "LockInfo|"
+            "LockSupport|Logger|LoggingMXBean|LoggingPermission|LogicalHandler|LogicalMessage|LogicalMessageContext|"
+            "LoginContext|LoginException|LoginModule|LogManager|LogRecord|LogStream|Long|LongAccumulator|LongAdder|"
+            "LongBinaryOperator|LongBuffer|LongConsumer|LongFunction|LongHolder|LongLongSeqHelper|LongLongSeqHolder|"
+            "LongPredicate|LongSeqHelper|LongSeqHolder|LongStream|LongStream.Builder|LongSummaryStatistics|"
+            "LongSupplier|"
+            "LongToDoubleFunction|LongToIntFunction|LongUnaryOperator|LookAndFeel|LookupOp|LookupTable|LSException|"
+            "LSInput|"
+            "LSLoadEvent|LSOutput|LSParser|LSParserFilter|LSProgressEvent|LSResourceResolver|LSSerializer|"
+            "LSSerializerFilter)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(Mac|MacSpi|MailcapCommandMap|MalformedInputException|MalformedLinkException|"
+            "MalformedObjectNameException|"
+            "MalformedParameterizedTypeException|MalformedParametersException|MalformedURLException|ManagementFactory|"
+            "ManagementPermission|ManageReferralControl|ManagerFactoryParameters|Manifest|Manifest|Map|Map.Entry|"
+            "MappedByteBuffer|MARSHAL|MarshalException|MarshalException|MarshalException|MarshalledObject|Marshaller|"
+            "Marshaller.Listener|MaskFormatter|Matcher|MatchResult|Math|MathContext|MatteBorder|MBeanAttributeInfo|"
+            "MBeanConstructorInfo|MBeanException|MBeanFeatureInfo|MBeanInfo|MBeanNotificationInfo|MBeanOperationInfo|"
+            "MBeanParameterInfo|MBeanPermission|MBeanRegistration|MBeanRegistrationException|MBeanServer|"
+            "MBeanServerBuilder|MBeanServerConnection|MBeanServerDelegate|MBeanServerDelegateMBean|MBeanServerFactory|"
+            "MBeanServerForwarder|MBeanServerInvocationHandler|MBeanServerNotification|MBeanServerNotificationFilter|"
+            "MBeanServerPermission|MBeanTrustPermission|Media|MediaName|MediaPrintableArea|MediaSize|MediaSize."
+            "Engineering|"
+            "MediaSize.ISO|MediaSize.JIS|MediaSize.NA|MediaSize.Other|MediaSizeName|MediaTracker|MediaTray|Member|"
+            "MembershipKey|MemoryCacheImageInputStream|MemoryCacheImageOutputStream|MemoryHandler|MemoryImageSource|"
+            "MemoryManagerMXBean|MemoryMXBean|MemoryNotificationInfo|MemoryPoolMXBean|MemoryType|MemoryUsage|Menu|"
+            "MenuBar|"
+            "MenuBarUI|MenuComponent|MenuContainer|MenuDragMouseEvent|MenuDragMouseListener|MenuElement|MenuEvent|"
+            "MenuItem|"
+            "MenuItemUI|MenuKeyEvent|MenuKeyListener|MenuListener|MenuSelectionManager|MenuShortcut|MessageContext|"
+            "MessageContext.Scope|MessageDigest|MessageDigestSpi|MessageFactory|MessageFormat|MessageFormat.Field|"
+            "MessageProp|Messager|MetaEventListener|MetalBorders|MetalBorders.ButtonBorder|MetalBorders.Flush3DBorder|"
+            "MetalBorders.InternalFrameBorder|MetalBorders.MenuBarBorder|MetalBorders.MenuItemBorder|MetalBorders."
+            "OptionDialogBorder|MetalBorders.PaletteBorder|MetalBorders.PopupMenuBorder|MetalBorders."
+            "RolloverButtonBorder|"
+            "MetalBorders.ScrollPaneBorder|MetalBorders.TableHeaderBorder|MetalBorders.TextFieldBorder|MetalBorders."
+            "ToggleButtonBorder|MetalBorders.ToolBarBorder|MetalButtonUI|MetalCheckBoxIcon|MetalCheckBoxUI|"
+            "MetalComboBoxButton|MetalComboBoxEditor|MetalComboBoxEditor.UIResource|MetalComboBoxIcon|MetalComboBoxUI|"
+            "MetalDesktopIconUI|MetalFileChooserUI|MetalIconFactory|MetalIconFactory.FileIcon16|MetalIconFactory."
+            "FolderIcon16|MetalIconFactory.PaletteCloseIcon|MetalIconFactory.TreeControlIcon|MetalIconFactory."
+            "TreeFolderIcon|MetalIconFactory.TreeLeafIcon|MetalInternalFrameTitlePane|MetalInternalFrameUI|"
+            "MetalLabelUI|"
+            "MetalLookAndFeel|MetalMenuBarUI|MetalPopupMenuSeparatorUI|MetalProgressBarUI|MetalRadioButtonUI|"
+            "MetalRootPaneUI|MetalScrollBarUI|MetalScrollButton|MetalScrollPaneUI|MetalSeparatorUI|MetalSliderUI|"
+            "MetalSplitPaneUI|MetalTabbedPaneUI|MetalTextFieldUI|MetalTheme|MetalToggleButtonUI|MetalToolBarUI|"
+            "MetalToolTipUI|MetalTreeUI|MetaMessage|Method|MethodDescriptor|MethodHandle|MethodHandleInfo|"
+            "MethodHandleProxies|MethodHandles|MethodHandles.Lookup|MethodType|MGF1ParameterSpec|MidiChannel|"
+            "MidiDevice|"
+            "MidiDevice.Info|MidiDeviceProvider|MidiDeviceReceiver|MidiDeviceTransmitter|MidiEvent|MidiFileFormat|"
+            "MidiFileReader|MidiFileWriter|MidiMessage|MidiSystem|MidiUnavailableException|MimeHeader|MimeHeaders|"
+            "MimeType|"
+            "MimeTypeParameterList|MimeTypeParseException|MimeTypeParseException|MimetypesFileTypeMap|MinguoChronology|"
+            "MinguoDate|MinguoEra|MinimalHTMLWriter|MirroredTypeException|MirroredTypesException|"
+            "MissingFormatArgumentException|MissingFormatWidthException|MissingResourceException|Mixer|Mixer.Info|"
+            "MixerProvider|MLet|MLetContent|MLetMBean|ModelMBean|ModelMBeanAttributeInfo|ModelMBeanConstructorInfo|"
+            "ModelMBeanInfo|ModelMBeanInfoSupport|ModelMBeanNotificationBroadcaster|ModelMBeanNotificationInfo|"
+            "ModelMBeanOperationInfo|ModificationItem|Modifier|Modifier|Monitor|MonitorInfo|MonitorMBean|"
+            "MonitorNotification|MonitorSettingException|Month|MonthDay|MouseAdapter|MouseDragGestureRecognizer|"
+            "MouseEvent|"
+            "MouseEvent|MouseInfo|MouseInputAdapter|MouseInputListener|MouseListener|MouseMotionAdapter|"
+            "MouseMotionListener|MouseWheelEvent|MouseWheelListener|MTOM|MTOMFeature|MultiButtonUI|MulticastChannel|"
+            "MulticastSocket|MultiColorChooserUI|MultiComboBoxUI|MultiDesktopIconUI|MultiDesktopPaneUI|MultiDoc|"
+            "MultiDocPrintJob|MultiDocPrintService|MultiFileChooserUI|MultiInternalFrameUI|MultiLabelUI|MultiListUI|"
+            "MultiLookAndFeel|MultiMenuBarUI|MultiMenuItemUI|MultiOptionPaneUI|MultiPanelUI|"
+            "MultiPixelPackedSampleModel|"
+            "MultipleComponentProfileHelper|MultipleComponentProfileHolder|MultipleDocumentHandling|"
+            "MultipleGradientPaint|"
+            "MultipleGradientPaint.ColorSpaceType|MultipleGradientPaint.CycleMethod|MultipleMaster|MultiPopupMenuUI|"
+            "MultiProgressBarUI|MultiRootPaneUI|MultiScrollBarUI|MultiScrollPaneUI|MultiSeparatorUI|MultiSliderUI|"
+            "MultiSpinnerUI|MultiSplitPaneUI|MultiTabbedPaneUI|MultiTableHeaderUI|MultiTableUI|MultiTextUI|"
+            "MultiToolBarUI|"
+            "MultiToolTipUI|MultiTreeUI|MultiViewportUI|MutableAttributeSet|MutableCallSite|MutableComboBoxModel|"
+            "MutableTreeNode|MutationEvent|MXBean|Name|Name|Name|NameAlreadyBoundException|NameCallback|NameClassPair|"
+            "NameComponent|NameComponentHelper|NameComponentHolder|NamedNodeMap|NamedValue|NameDynAnyPair|"
+            "NameDynAnyPairHelper|NameDynAnyPairSeqHelper|NameHelper|NameHolder|NameList|NameNotFoundException|"
+            "NameParser|"
+            "Namespace|NamespaceChangeListener|NamespaceContext|NamespaceSupport|NameValuePair|NameValuePair|"
+            "NameValuePairHelper|NameValuePairHelper|NameValuePairSeqHelper|Naming|NamingContext|NamingContextExt|"
+            "NamingContextExtHelper|NamingContextExtHolder|NamingContextExtOperations|NamingContextExtPOA|"
+            "NamingContextHelper|NamingContextHolder|NamingContextOperations|NamingContextPOA|NamingEnumeration|"
+            "NamingEvent|NamingException|NamingExceptionEvent|NamingListener|NamingManager|NamingSecurityException|"
+            "Native|"
+            "NavigableMap|NavigableSet|NavigationFilter|NavigationFilter.FilterBypass|NClob|NegativeArraySizeException|"
+            "NestingKind|NetPermission|NetworkChannel|NetworkInterface|NimbusLookAndFeel|NimbusStyle|NO_IMPLEMENT|NO_"
+            "MEMORY|NO_PERMISSION|NO_RESOURCES|NO_RESPONSE|NoClassDefFoundError|NoConnectionPendingException|NoContext|"
+            "NoContextHelper|Node|Node|NodeChangeEvent|NodeChangeListener|NodeList|NodeSetData|"
+            "NoInitialContextException|"
+            "NON_EXISTENT|NoninvertibleTransformException|NonReadableChannelException|NonWritableChannelException|"
+            "NoPermissionException|NormalizedStringAdapter|Normalizer|Normalizer.Form|NoRouteToHostException|NoServant|"
+            "NoServantHelper|NoSuchAlgorithmException|NoSuchAttributeException|NoSuchElementException|NoSuchFieldError|"
+            "NoSuchFieldException|NoSuchFileException|NoSuchMechanismException|NoSuchMethodError|NoSuchMethodException|"
+            "NoSuchObjectException|NoSuchPaddingException|NoSuchProviderException|NotActiveException|Notation|"
+            "NotationDeclaration|NotBoundException|NotCompliantMBeanException|NotContextException|"
+            "NotDirectoryException|"
+            "NotEmpty|NotEmptyHelper|NotEmptyHolder|NotFound|NotFoundHelper|NotFoundHolder|NotFoundReason|"
+            "NotFoundReasonHelper|NotFoundReasonHolder|NotIdentifiableEvent|NotIdentifiableEventImpl|Notification|"
+            "NotificationBroadcaster|NotificationBroadcasterSupport|NotificationEmitter|NotificationFilter|"
+            "NotificationFilterSupport|NotificationListener|NotificationResult|NotLinkException|NotOwnerException|"
+            "NotSerializableException|NotYetBoundException|NotYetConnectedException|NoType|NullCipher|"
+            "NullPointerException|"
+            "NullType|Number|NumberFormat|NumberFormat.Field|NumberFormatException|NumberFormatProvider|"
+            "NumberFormatter|"
+            "NumberOfDocuments|NumberOfInterveningJobs|NumberUp|NumberUpSupported|NumericShaper|NumericShaper.Range|"
+            "NVList)"
+            "(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(OAEPParameterSpec|OBJ_ADAPTER|ObjDoubleConsumer|Object|Object|OBJECT_NOT_EXIST|ObjectAlreadyActive|"
+            "ObjectAlreadyActiveHelper|ObjectChangeListener|ObjectFactory|ObjectFactoryBuilder|ObjectHelper|"
+            "ObjectHolder|"
+            "ObjectIdHelper|ObjectIdHelper|ObjectImpl|ObjectImpl|ObjectInput|ObjectInputStream|ObjectInputStream."
+            "GetField|"
+            "ObjectInputValidation|ObjectInstance|ObjectName|ObjectNotActive|ObjectNotActiveHelper|ObjectOutput|"
+            "ObjectOutputStream|ObjectOutputStream.PutField|ObjectReferenceFactory|ObjectReferenceFactoryHelper|"
+            "ObjectReferenceFactoryHolder|ObjectReferenceTemplate|ObjectReferenceTemplateHelper|"
+            "ObjectReferenceTemplateHolder|ObjectReferenceTemplateSeqHelper|ObjectReferenceTemplateSeqHolder|Objects|"
+            "ObjectStreamClass|ObjectStreamConstants|ObjectStreamException|ObjectStreamField|ObjectView|ObjID|"
+            "ObjIntConsumer|ObjLongConsumer|Observable|Observer|OceanTheme|OctetSeqHelper|OctetSeqHolder|"
+            "OctetStreamData|"
+            "OffsetDateTime|OffsetTime|Oid|OMGVMCID|Oneway|OpenDataException|OpenMBeanAttributeInfo|"
+            "OpenMBeanAttributeInfoSupport|OpenMBeanConstructorInfo|OpenMBeanConstructorInfoSupport|OpenMBeanInfo|"
+            "OpenMBeanInfoSupport|OpenMBeanOperationInfo|OpenMBeanOperationInfoSupport|OpenMBeanParameterInfo|"
+            "OpenMBeanParameterInfoSupport|OpenOption|OpenType|OpenType|OperatingSystemMXBean|Operation|"
+            "OperationNotSupportedException|OperationsException|Option|Optional|OptionalDataException|OptionalDouble|"
+            "OptionalInt|OptionalLong|OptionChecker|OptionPaneUI|ORB|ORB|ORBIdHelper|ORBInitializer|"
+            "ORBInitializerOperations|ORBInitInfo|ORBInitInfoOperations|OrientationRequested|OutOfMemoryError|"
+            "OutputDeviceAssigned|OutputKeys|OutputStream|OutputStream|OutputStream|OutputStreamWriter|"
+            "OverlappingFileLockException|OverlayLayout|Override|Owner|Pack200|Pack200.Packer|Pack200.Unpacker|Package|"
+            "PackageElement|PackedColorModel|Pageable|PageAttributes|PageAttributes.ColorType|PageAttributes.MediaType|"
+            "PageAttributes.OrientationRequestedType|PageAttributes.OriginType|PageAttributes.PrintQualityType|"
+            "PagedResultsControl|PagedResultsResponseControl|PageFormat|PageRanges|PagesPerMinute|PagesPerMinuteColor|"
+            "Paint|PaintContext|Painter|PaintEvent|Panel|PanelUI|Paper|ParagraphView|ParagraphView|Parameter|Parameter|"
+            "ParameterBlock|ParameterDescriptor|Parameterizable|ParameterizedType|ParameterMetaData|ParameterMode|"
+            "ParameterModeHelper|ParameterModeHolder|ParseConversionEvent|ParseConversionEventImpl|ParseException|"
+            "ParsePosition|Parser|Parser|ParserAdapter|ParserConfigurationException|ParserDelegator|ParserFactory|"
+            "PartialResultException|PasswordAuthentication|PasswordCallback|PasswordView|Patch|Path|Path2D|Path2D."
+            "Double|"
+            "Path2D.Float|PathIterator|PathMatcher|Paths|Pattern|PatternSyntaxException|PBEKey|PBEKeySpec|"
+            "PBEParameterSpec|"
+            "PDLOverrideSupported|Period|Permission|Permission|PermissionCollection|Permissions|PERSIST_STORE|"
+            "PersistenceDelegate|PersistentMBean|PGPData|PhantomReference|Phaser|Pipe|Pipe.SinkChannel|Pipe."
+            "SourceChannel|"
+            "PipedInputStream|PipedOutputStream|PipedReader|PipedWriter|PixelGrabber|PixelInterleavedSampleModel|"
+            "PKCS12Attribute|PKCS8EncodedKeySpec|PKIXBuilderParameters|PKIXCertPathBuilderResult|PKIXCertPathChecker|"
+            "PKIXCertPathValidatorResult|PKIXParameters|PKIXReason|PKIXRevocationChecker|PKIXRevocationChecker.Option|"
+            "PlainDocument|PlainView|PlatformLoggingMXBean|PlatformManagedObject|POA|POAHelper|POAManager|"
+            "POAManagerOperations|POAOperations|Point|Point2D|Point2D.Double|Point2D.Float|PointerInfo|Policy|Policy|"
+            "Policy|Policy.Parameters|PolicyError|PolicyErrorCodeHelper|PolicyErrorHelper|PolicyErrorHolder|"
+            "PolicyFactory|"
+            "PolicyFactoryOperations|PolicyHelper|PolicyHolder|PolicyListHelper|PolicyListHolder|PolicyNode|"
+            "PolicyOperations|PolicyQualifierInfo|PolicySpi|PolicyTypeHelper|Polygon|PooledConnection|Popup|"
+            "PopupFactory|"
+            "PopupMenu|PopupMenuEvent|PopupMenuListener|PopupMenuUI|Port|Port.Info|PortableRemoteObject|"
+            "PortableRemoteObjectDelegate|PortInfo|PortUnreachableException|Position|Position.Bias|PosixFileAttributes|"
+            "PosixFileAttributeView|PosixFilePermission|PosixFilePermissions|PostConstruct|PreDestroy|Predicate|"
+            "Predicate|"
+            "PreferenceChangeEvent|PreferenceChangeListener|Preferences|PreferencesFactory|PreparedStatement|"
+            "PresentationDirection|PrimitiveIterator|PrimitiveIterator.OfDouble|PrimitiveIterator.OfInt|"
+            "PrimitiveIterator."
+            "OfLong|PrimitiveType|Principal|Principal|PrincipalHolder|Printable|PrintConversionEvent|"
+            "PrintConversionEventImpl|PrinterAbortException|PrinterException|PrinterGraphics|PrinterInfo|"
+            "PrinterIOException|PrinterIsAcceptingJobs|PrinterJob|PrinterLocation|PrinterMakeAndModel|"
+            "PrinterMessageFromOperator|PrinterMoreInfo|PrinterMoreInfoManufacturer|PrinterName|PrinterResolution|"
+            "PrinterState|PrinterStateReason|PrinterStateReasons|PrinterURI|PrintEvent|PrintException|PrintGraphics|"
+            "PrintJob|PrintJobAdapter|PrintJobAttribute|PrintJobAttributeEvent|PrintJobAttributeListener|"
+            "PrintJobAttributeSet|PrintJobEvent|PrintJobListener|PrintQuality|PrintRequestAttribute|"
+            "PrintRequestAttributeSet|PrintService|PrintServiceAttribute|PrintServiceAttributeEvent|"
+            "PrintServiceAttributeListener|PrintServiceAttributeSet|PrintServiceLookup|PrintStream|PrintWriter|"
+            "PriorityBlockingQueue|PriorityQueue|PRIVATE_MEMBER|PrivateClassLoader|PrivateCredentialPermission|"
+            "PrivateKey|"
+            "PrivateMLet|PrivilegedAction|PrivilegedActionException|PrivilegedExceptionAction|Process|ProcessBuilder|"
+            "ProcessBuilder.Redirect|ProcessBuilder.Redirect.Type|ProcessingEnvironment|ProcessingInstruction|"
+            "ProcessingInstruction|Processor|ProfileDataException|ProfileIdHelper|ProgressBarUI|ProgressMonitor|"
+            "ProgressMonitorInputStream|Properties|PropertyChangeEvent|PropertyChangeListener|"
+            "PropertyChangeListenerProxy|"
+            "PropertyChangeSupport|PropertyDescriptor|PropertyEditor|PropertyEditorManager|PropertyEditorSupport|"
+            "PropertyException|PropertyPermission|PropertyResourceBundle|PropertyVetoException|ProtectionDomain|"
+            "ProtocolException|ProtocolException|ProtocolFamily|Provider|Provider|Provider|Provider.Service|"
+            "ProviderException|ProviderMismatchException|ProviderNotFoundException|Proxy|Proxy|Proxy.Type|"
+            "ProxySelector|"
+            "PseudoColumnUsage|PSource|PSource.PSpecified|PSSParameterSpec|PUBLIC_MEMBER|PublicKey|PushbackInputStream|"
+            "PushbackReader)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(QName|QuadCurve2D|QuadCurve2D.Double|QuadCurve2D.Float|QualifiedNameable|Query|QueryEval|QueryExp|"
+            "Queue|"
+            "QueuedJobCount|RadialGradientPaint|Random|RandomAccess|RandomAccessFile|Raster|RasterFormatException|"
+            "RasterOp|"
+            "RC2ParameterSpec|RC5ParameterSpec|Rdn|Readable|ReadableByteChannel|Reader|ReadOnlyBufferException|"
+            "ReadOnlyFileSystemException|ReadPendingException|ReadWriteLock|RealmCallback|RealmChoiceCallback|REBIND|"
+            "Receiver|Rectangle|Rectangle2D|Rectangle2D.Double|Rectangle2D.Float|RectangularShape|RecursiveAction|"
+            "RecursiveTask|ReentrantLock|ReentrantReadWriteLock|ReentrantReadWriteLock.ReadLock|ReentrantReadWriteLock."
+            "WriteLock|Ref|RefAddr|Reference|Reference|Reference|Referenceable|ReferenceQueue|ReferenceType|"
+            "ReferenceUriSchemesSupported|ReferralException|ReflectionException|ReflectiveOperationException|"
+            "ReflectPermission|Refreshable|RefreshFailedException|Region|RegisterableService|Registry|RegistryHandler|"
+            "RejectedExecutionException|RejectedExecutionHandler|Relation|RelationException|RelationNotFoundException|"
+            "RelationNotification|RelationService|RelationServiceMBean|RelationServiceNotRegisteredException|"
+            "RelationSupport|RelationSupportMBean|RelationType|RelationTypeNotFoundException|RelationTypeSupport|"
+            "RemarshalException|Remote|RemoteCall|RemoteException|RemoteObject|RemoteObjectInvocationHandler|RemoteRef|"
+            "RemoteServer|RemoteStub|RenderableImage|RenderableImageOp|RenderableImageProducer|RenderContext|"
+            "RenderedImage|"
+            "RenderedImageFactory|Renderer|RenderingHints|RenderingHints.Key|RepaintManager|Repeatable|"
+            "ReplicateScaleFilter|RepositoryIdHelper|Request|REQUEST_PROCESSING_POLICY_ID|RequestInfo|"
+            "RequestInfoOperations|RequestingUserName|RequestProcessingPolicy|RequestProcessingPolicyOperations|"
+            "RequestProcessingPolicyValue|RequestWrapper|RequiredModelMBean|RescaleOp|ResolutionSyntax|Resolver|"
+            "ResolveResult|ResolverStyle|Resource|Resource.AuthenticationType|ResourceBundle|ResourceBundle.Control|"
+            "ResourceBundleControlProvider|Resources|RespectBinding|RespectBindingFeature|Response|ResponseCache|"
+            "ResponseHandler|ResponseWrapper|Result|ResultSet|ResultSetMetaData|Retention|RetentionPolicy|"
+            "RetrievalMethod|"
+            "ReverbType|RGBImageFilter|RMIClassLoader|RMIClassLoaderSpi|RMIClientSocketFactory|RMIConnection|"
+            "RMIConnectionImpl|RMIConnectionImpl_Stub|RMIConnector|RMIConnectorServer|RMICustomMaxStreamFormat|"
+            "RMIFailureHandler|RMIIIOPServerImpl|RMIJRMPServerImpl|RMISecurityException|RMISecurityManager|RMIServer|"
+            "RMIServerImpl|RMIServerImpl_Stub|RMIServerSocketFactory|RMISocketFactory|Robot|Role|RoleInfo|"
+            "RoleInfoNotFoundException|RoleList|RoleNotFoundException|RoleResult|RoleStatus|RoleUnresolved|"
+            "RoleUnresolvedList|RootPaneContainer|RootPaneUI|RoundEnvironment|RoundingMode|RoundRectangle2D|"
+            "RoundRectangle2D.Double|RoundRectangle2D.Float|RowFilter|RowFilter.ComparisonType|RowFilter.Entry|RowId|"
+            "RowIdLifetime|RowMapper|RowSet|RowSetEvent|RowSetFactory|RowSetInternal|RowSetListener|RowSetMetaData|"
+            "RowSetMetaDataImpl|RowSetProvider|RowSetReader|RowSetWarning|RowSetWriter|RowSorter|RowSorter.SortKey|"
+            "RowSorterEvent|RowSorterEvent.Type|RowSorterListener|RSAKey|RSAKeyGenParameterSpec|"
+            "RSAMultiPrimePrivateCrtKey|"
+            "RSAMultiPrimePrivateCrtKeySpec|RSAOtherPrimeInfo|RSAPrivateCrtKey|RSAPrivateCrtKeySpec|RSAPrivateKey|"
+            "RSAPrivateKeySpec|RSAPublicKey|RSAPublicKeySpec|RTFEditorKit|RuleBasedCollator|Runnable|RunnableFuture|"
+            "RunnableScheduledFuture|Runtime|RunTime|RuntimeErrorException|RuntimeException|RuntimeMBeanException|"
+            "RuntimeMXBean|RunTimeOperations|RuntimeOperationsException|RuntimePermission)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(SAAJMetaFactory|SAAJResult|SafeVarargs|SampleModel|Sasl|SaslClient|SaslClientFactory|SaslException|"
+            "SaslServer|SaslServerFactory|Savepoint|SAXException|SAXNotRecognizedException|SAXNotSupportedException|"
+            "SAXParseException|SAXParser|SAXParserFactory|SAXResult|SAXSource|SAXTransformerFactory|Scanner|"
+            "ScatteringByteChannel|ScheduledExecutorService|ScheduledFuture|ScheduledThreadPoolExecutor|Schema|"
+            "SchemaFactory|SchemaFactoryConfigurationError|SchemaFactoryLoader|SchemaOutputResolver|"
+            "SchemaViolationException|ScriptContext|ScriptEngine|ScriptEngineFactory|ScriptEngineManager|"
+            "ScriptException|"
+            "Scrollable|Scrollbar|ScrollBarUI|ScrollPane|ScrollPaneAdjustable|ScrollPaneConstants|ScrollPaneLayout|"
+            "ScrollPaneLayout.UIResource|ScrollPaneUI|SealedObject|SearchControls|SearchResult|SecondaryLoop|SecretKey|"
+            "SecretKeyFactory|SecretKeyFactorySpi|SecretKeySpec|SecureCacheResponse|SecureClassLoader|"
+            "SecureDirectoryStream|SecureRandom|SecureRandomSpi|Security|SecurityException|SecurityManager|"
+            "SecurityPermission|SeekableByteChannel|Segment|SelectableChannel|SelectionKey|Selector|SelectorProvider|"
+            "Semaphore|SeparatorUI|Sequence|SequenceInputStream|Sequencer|Sequencer.SyncMode|SerialArray|SerialBlob|"
+            "SerialClob|SerialDatalink|SerialException|Serializable|SerializablePermission|SerializedLambda|"
+            "SerialJavaObject|SerialRef|SerialStruct|Servant|SERVANT_RETENTION_POLICY_ID|ServantActivator|"
+            "ServantActivatorHelper|ServantActivatorOperations|ServantActivatorPOA|ServantAlreadyActive|"
+            "ServantAlreadyActiveHelper|ServantLocator|ServantLocatorHelper|ServantLocatorOperations|ServantLocatorPOA|"
+            "ServantManager|ServantManagerOperations|ServantNotActive|ServantNotActiveHelper|ServantObject|"
+            "ServantRetentionPolicy|ServantRetentionPolicyOperations|ServantRetentionPolicyValue|ServerCloneException|"
+            "ServerError|ServerException|ServerIdHelper|ServerNotActiveException|ServerRef|ServerRequest|"
+            "ServerRequestInfo|"
+            "ServerRequestInfoOperations|ServerRequestInterceptor|ServerRequestInterceptorOperations|"
+            "ServerRuntimeException|ServerSocket|ServerSocketChannel|ServerSocketFactory|Service|Service.Mode|"
+            "ServiceConfigurationError|ServiceContext|ServiceContextHelper|ServiceContextHolder|"
+            "ServiceContextListHelper|"
+            "ServiceContextListHolder|ServiceDelegate|ServiceDetail|ServiceDetailHelper|ServiceIdHelper|"
+            "ServiceInformation|"
+            "ServiceInformationHelper|ServiceInformationHolder|ServiceLoader|ServiceMode|ServiceNotFoundException|"
+            "ServicePermission|ServiceRegistry|ServiceRegistry.Filter|ServiceUI|ServiceUIFactory|"
+            "ServiceUnavailableException|Set|SetOfIntegerSyntax|SetOverrideType|SetOverrideTypeHelper|Severity|Shape|"
+            "ShapeGraphicAttribute|SheetCollate|Short|ShortBuffer|ShortBufferException|ShortHolder|ShortLookupTable|"
+            "ShortMessage|ShortSeqHelper|ShortSeqHolder|ShutdownChannelGroupException|Sides|Signature|"
+            "SignatureException|"
+            "SignatureMethod|SignatureMethodParameterSpec|SignatureProperties|SignatureProperty|SignatureSpi|"
+            "SignedInfo|"
+            "SignedObject|Signer|SignStyle|SimpleAnnotationValueVisitor6|SimpleAnnotationValueVisitor7|"
+            "SimpleAnnotationValueVisitor8|SimpleAttributeSet|SimpleBeanInfo|SimpleBindings|SimpleDateFormat|SimpleDoc|"
+            "SimpleElementVisitor6|SimpleElementVisitor7|SimpleElementVisitor8|SimpleFileVisitor|SimpleFormatter|"
+            "SimpleJavaFileObject|SimpleScriptContext|SimpleTimeZone|SimpleType|SimpleTypeVisitor6|SimpleTypeVisitor7|"
+            "SimpleTypeVisitor8|SinglePixelPackedSampleModel|SingleSelectionModel|Size2DSyntax|"
+            "SizeLimitExceededException|"
+            "SizeRequirements|SizeSequence|Skeleton|SkeletonMismatchException|SkeletonNotFoundException|SliderUI|"
+            "SNIHostName|SNIMatcher|SNIServerName|SOAPBinding|SOAPBinding|SOAPBinding.ParameterStyle|SOAPBinding.Style|"
+            "SOAPBinding.Use|SOAPBody|SOAPBodyElement|SOAPConnection|SOAPConnectionFactory|SOAPConstants|SOAPElement|"
+            "SOAPElementFactory|SOAPEnvelope|SOAPException|SOAPFactory|SOAPFault|SOAPFaultElement|SOAPFaultException|"
+            "SOAPHandler|SOAPHeader|SOAPHeaderElement|SOAPMessage|SOAPMessageContext|SOAPMessageHandler|"
+            "SOAPMessageHandlers|SOAPPart|Socket|SocketAddress|SocketChannel|SocketException|SocketFactory|"
+            "SocketHandler|"
+            "SocketImpl|SocketImplFactory|SocketOption|SocketOptions|SocketPermission|SocketSecurityException|"
+            "SocketTimeoutException|SoftBevelBorder|SoftReference|SortControl|SortedMap|SortedSet|"
+            "SortingFocusTraversalPolicy|SortKey|SortOrder|SortResponseControl|Soundbank|SoundbankReader|"
+            "SoundbankResource|"
+            "Source|SourceDataLine|SourceLocator|SourceVersion|SpinnerDateModel|SpinnerListModel|SpinnerModel|"
+            "SpinnerNumberModel|SpinnerUI|SplashScreen|Spliterator|Spliterator.OfDouble|Spliterator.OfInt|Spliterator."
+            "OfLong|Spliterator.OfPrimitive|Spliterators|Spliterators.AbstractDoubleSpliterator|Spliterators."
+            "AbstractIntSpliterator|Spliterators.AbstractLongSpliterator|Spliterators.AbstractSpliterator|SplitPaneUI|"
+            "SplittableRandom|Spring|SpringLayout|SpringLayout.Constraints|SQLClientInfoException|SQLData|"
+            "SQLDataException|"
+            "SQLException|SQLFeatureNotSupportedException|SQLInput|SQLInputImpl|"
+            "SQLIntegrityConstraintViolationException|"
+            "SQLInvalidAuthorizationSpecException|SQLNonTransientConnectionException|SQLNonTransientException|"
+            "SQLOutput|"
+            "SQLOutputImpl|SQLPermission|SQLRecoverableException|SQLSyntaxErrorException|SQLTimeoutException|"
+            "SQLTransactionRollbackException|SQLTransientConnectionException|SQLTransientException|SQLType|SQLWarning|"
+            "SQLXML|SSLContext|SSLContextSpi|SSLEngine|SSLEngineResult|SSLEngineResult.HandshakeStatus|SSLEngineResult."
+            "Status|SSLException|SSLHandshakeException|SSLKeyException|SSLParameters|SSLPeerUnverifiedException|"
+            "SSLPermission|SSLProtocolException|SslRMIClientSocketFactory|SslRMIServerSocketFactory|SSLServerSocket|"
+            "SSLServerSocketFactory|SSLSession|SSLSessionBindingEvent|SSLSessionBindingListener|SSLSessionContext|"
+            "SSLSocket|SSLSocketFactory|Stack|StackOverflowError|StackTraceElement|StampedLock|StandardCharsets|"
+            "StandardConstants|StandardCopyOption|StandardEmitterMBean|StandardJavaFileManager|StandardLocation|"
+            "StandardMBean|StandardOpenOption|StandardProtocolFamily|StandardSocketOptions|StandardWatchEventKinds|"
+            "StartDocument|StartElement|StartTlsRequest|StartTlsResponse|State|State|StateEdit|StateEditable|"
+            "StateFactory|"
+            "Statement|Statement|StatementEvent|StatementEventListener|StAXResult|StAXSource|Stream|Stream.Builder|"
+            "Streamable|StreamableValue|StreamCorruptedException|StreamFilter|StreamHandler|StreamPrintService|"
+            "StreamPrintServiceFactory|StreamReaderDelegate|StreamResult|StreamSource|StreamSupport|StreamTokenizer|"
+            "StrictMath|String|StringBuffer|StringBufferInputStream|StringBuilder|StringCharacterIterator|"
+            "StringContent|"
+            "StringHolder|StringIndexOutOfBoundsException|StringJoiner|StringMonitor|StringMonitorMBean|"
+            "StringNameHelper|"
+            "StringReader|StringRefAddr|StringSelection|StringSeqHelper|StringSeqHolder|StringTokenizer|StringValueExp|"
+            "StringValueHelper|StringWriter|Stroke|StrokeBorder|Struct|StructMember|StructMemberHelper|Stub|"
+            "StubDelegate|"
+            "StubNotFoundException|Style|StyleConstants|StyleConstants.CharacterConstants|StyleConstants."
+            "ColorConstants|"
+            "StyleConstants.FontConstants|StyleConstants.ParagraphConstants|StyleContext|StyledDocument|"
+            "StyledEditorKit|"
+            "StyledEditorKit.AlignmentAction|StyledEditorKit.BoldAction|StyledEditorKit.FontFamilyAction|"
+            "StyledEditorKit."
+            "FontSizeAction|StyledEditorKit.ForegroundAction|StyledEditorKit.ItalicAction|StyledEditorKit."
+            "StyledTextAction|"
+            "StyledEditorKit.UnderlineAction|StyleSheet|StyleSheet.BoxPainter|StyleSheet.ListPainter|Subject|"
+            "SubjectDelegationPermission|SubjectDomainCombiner|SUCCESSFUL|Supplier|SupportedAnnotationTypes|"
+            "SupportedOptions|SupportedSourceVersion|SupportedValuesAttribute|SuppressWarnings|SwingConstants|"
+            "SwingPropertyChangeSupport|SwingUtilities|SwingWorker|SwingWorker.StateValue|SwitchPoint|SYNC_WITH_"
+            "TRANSPORT|"
+            "SyncFactory|SyncFactoryException|SyncFailedException|SynchronousQueue|SyncProvider|SyncProviderException|"
+            "SyncResolver|SyncScopeHelper|SynthButtonUI|SynthCheckBoxMenuItemUI|SynthCheckBoxUI|SynthColorChooserUI|"
+            "SynthComboBoxUI|SynthConstants|SynthContext|SynthDesktopIconUI|SynthDesktopPaneUI|SynthEditorPaneUI|"
+            "Synthesizer|SynthFormattedTextFieldUI|SynthGraphicsUtils|SynthInternalFrameUI|SynthLabelUI|SynthListUI|"
+            "SynthLookAndFeel|SynthMenuBarUI|SynthMenuItemUI|SynthMenuUI|SynthOptionPaneUI|SynthPainter|SynthPanelUI|"
+            "SynthPasswordFieldUI|SynthPopupMenuUI|SynthProgressBarUI|SynthRadioButtonMenuItemUI|SynthRadioButtonUI|"
+            "SynthRootPaneUI|SynthScrollBarUI|SynthScrollPaneUI|SynthSeparatorUI|SynthSliderUI|SynthSpinnerUI|"
+            "SynthSplitPaneUI|SynthStyle|SynthStyleFactory|SynthTabbedPaneUI|SynthTableHeaderUI|SynthTableUI|"
+            "SynthTextAreaUI|SynthTextFieldUI|SynthTextPaneUI|SynthToggleButtonUI|SynthToolBarUI|SynthToolTipUI|"
+            "SynthTreeUI|SynthUI|SynthViewportUI|SysexMessage|System|SYSTEM_EXCEPTION|SystemColor|SystemException|"
+            "SystemFlavorMap|SystemTray)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(TabableView|TabbedPaneUI|TabExpander|TableCellEditor|TableCellRenderer|TableColumn|TableColumnModel|"
+            "TableColumnModelEvent|TableColumnModelListener|TableHeaderUI|TableModel|TableModelEvent|"
+            "TableModelListener|"
+            "TableRowSorter|TableStringConverter|TableUI|TableView|TabSet|TabStop|TabularData|TabularDataSupport|"
+            "TabularType|TAG_ALTERNATE_IIOP_ADDRESS|TAG_CODE_SETS|TAG_INTERNET_IOP|TAG_JAVA_CODEBASE|TAG_MULTIPLE_"
+            "COMPONENTS|TAG_ORB_TYPE|TAG_POLICIES|TAG_RMI_CUSTOM_MAX_STREAM_FORMAT|TagElement|TaggedComponent|"
+            "TaggedComponentHelper|TaggedComponentHolder|TaggedProfile|TaggedProfileHelper|TaggedProfileHolder|Target|"
+            "TargetDataLine|TargetedNotification|TCKind|Templates|TemplatesHandler|Temporal|TemporalAccessor|"
+            "TemporalAdjuster|TemporalAdjusters|TemporalAmount|TemporalField|TemporalQueries|TemporalQuery|"
+            "TemporalUnit|"
+            "Text|Text|TextAction|TextArea|TextAttribute|TextComponent|TextEvent|TextField|TextHitInfo|"
+            "TextInputCallback|"
+            "TextLayout|TextLayout.CaretPolicy|TextListener|TextMeasurer|TextOutputCallback|TextStyle|TextSyntax|"
+            "TextUI|"
+            "TexturePaint|ThaiBuddhistChronology|ThaiBuddhistDate|ThaiBuddhistEra|Thread|Thread.State|Thread."
+            "UncaughtExceptionHandler|THREAD_POLICY_ID|ThreadDeath|ThreadFactory|ThreadGroup|ThreadInfo|ThreadLocal|"
+            "ThreadLocalRandom|ThreadMXBean|ThreadPolicy|ThreadPolicyOperations|ThreadPolicyValue|ThreadPoolExecutor|"
+            "ThreadPoolExecutor.AbortPolicy|ThreadPoolExecutor.CallerRunsPolicy|ThreadPoolExecutor.DiscardOldestPolicy|"
+            "ThreadPoolExecutor.DiscardPolicy|Throwable|Tie|TileObserver|Time|TimeLimitExceededException|TIMEOUT|"
+            "TimeoutException|Timer|Timer|Timer|TimerMBean|TimerNotification|TimerTask|Timestamp|Timestamp|TimeUnit|"
+            "TimeZone|TimeZoneNameProvider|TitledBorder|ToDoubleBiFunction|ToDoubleFunction|ToIntBiFunction|"
+            "ToIntFunction|"
+            "ToLongBiFunction|ToLongFunction|Tool|ToolBarUI|Toolkit|ToolProvider|ToolTipManager|ToolTipUI|"
+            "TooManyListenersException|Track|TRANSACTION_MODE|TRANSACTION_REQUIRED|TRANSACTION_ROLLEDBACK|TRANSACTION_"
+            "UNAVAILABLE|TransactionalWriter|TransactionRequiredException|TransactionRolledbackException|"
+            "TransactionService|Transferable|TransferHandler|TransferHandler.DropLocation|TransferHandler."
+            "TransferSupport|"
+            "TransferQueue|Transform|TransformAttribute|Transformer|TransformerConfigurationException|"
+            "TransformerException|"
+            "TransformerFactory|TransformerFactoryConfigurationError|TransformerHandler|TransformException|"
+            "TransformParameterSpec|TransformService|Transient|TRANSIENT|Transmitter|Transparency|TRANSPORT_RETRY|"
+            "TrayIcon|"
+            "TrayIcon.MessageType|TreeCellEditor|TreeCellRenderer|TreeExpansionEvent|TreeExpansionListener|TreeMap|"
+            "TreeModel|TreeModelEvent|TreeModelListener|TreeNode|TreePath|TreeSelectionEvent|TreeSelectionListener|"
+            "TreeSelectionModel|TreeSet|TreeUI|TreeWillExpandListener|TrustAnchor|TrustManager|TrustManagerFactory|"
+            "TrustManagerFactorySpi|Type|TypeCode|TypeCodeHolder|TypeConstraintException|TypeElement|TypeInfo|"
+            "TypeInfoProvider|TypeKind|TypeKindVisitor6|TypeKindVisitor7|TypeKindVisitor8|TypeMirror|TypeMismatch|"
+            "TypeMismatch|TypeMismatch|TypeMismatchHelper|TypeMismatchHelper|TypeNotPresentException|"
+            "TypeParameterElement|"
+            "Types|Types|TypeVariable|TypeVariable|TypeVisitor|UID|UIDefaults|UIDefaults.ActiveValue|UIDefaults."
+            "LazyInputMap|UIDefaults.LazyValue|UIDefaults.ProxyLazyValue|UIEvent|UIManager|UIManager.LookAndFeelInfo|"
+            "UIResource|ULongLongSeqHelper|ULongLongSeqHolder|ULongSeqHelper|ULongSeqHolder|UnaryOperator|"
+            "UncheckedIOException|UndeclaredThrowableException|UndoableEdit|UndoableEditEvent|UndoableEditListener|"
+            "UndoableEditSupport|UndoManager|UnexpectedException|UnicastRemoteObject|UnionMember|UnionMemberHelper|"
+            "UnionType|UNKNOWN|UNKNOWN|UnknownAnnotationValueException|UnknownElementException|UnknownEncoding|"
+            "UnknownEncodingHelper|UnknownEntityException|UnknownError|UnknownException|"
+            "UnknownFormatConversionException|"
+            "UnknownFormatFlagsException|UnknownGroupException|UnknownHostException|UnknownHostException|"
+            "UnknownObjectException|UnknownServiceException|UnknownTypeException|UnknownUserException|"
+            "UnknownUserExceptionHelper|UnknownUserExceptionHolder|UnmappableCharacterException|UnmarshalException|"
+            "UnmarshalException|Unmarshaller|Unmarshaller.Listener|UnmarshallerHandler|UnmodifiableClassException|"
+            "UnmodifiableSetException|UnrecoverableEntryException|UnrecoverableKeyException|Unreferenced|"
+            "UnresolvedAddressException|UnresolvedPermission|UnsatisfiedLinkError|UnsolicitedNotification|"
+            "UnsolicitedNotificationEvent|UnsolicitedNotificationListener|UNSUPPORTED_POLICY|UNSUPPORTED_POLICY_VALUE|"
+            "UnsupportedAddressTypeException|UnsupportedAudioFileException|UnsupportedCallbackException|"
+            "UnsupportedCharsetException|UnsupportedClassVersionError|UnsupportedDataTypeException|"
+            "UnsupportedEncodingException|UnsupportedFlavorException|UnsupportedLookAndFeelException|"
+            "UnsupportedOperationException|UnsupportedTemporalTypeException|URI|URIDereferencer|URIException|"
+            "URIParameter|"
+            "URIReference|URIReferenceException|URIResolver|URISyntax|URISyntaxException|URL|URLClassLoader|"
+            "URLConnection|"
+            "URLDataSource|URLDecoder|URLEncoder|URLPermission|URLStreamHandler|URLStreamHandlerFactory|"
+            "URLStringHelper|"
+            "USER_EXCEPTION|UserDataHandler|UserDefinedFileAttributeView|UserException|UserPrincipal|"
+            "UserPrincipalLookupService|UserPrincipalNotFoundException|UShortSeqHelper|UShortSeqHolder|"
+            "UTFDataFormatException|Util|UtilDelegate|Utilities|UUID)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+
+        rule.pattern.setPattern(
+            "\\b(ValidationEvent|ValidationEventCollector|ValidationEventHandler|ValidationEventImpl|"
+            "ValidationEventLocator|ValidationEventLocatorImpl|ValidationException|Validator|Validator|"
+            "ValidatorHandler|"
+            "ValueBase|ValueBaseHelper|ValueBaseHolder|ValueExp|ValueFactory|ValueHandler|ValueHandlerMultiFormat|"
+            "ValueInputStream|ValueMember|ValueMemberHelper|ValueOutputStream|ValueRange|VariableElement|"
+            "VariableHeightLayoutCache|Vector|VerifyError|VersionSpecHelper|VetoableChangeListener|"
+            "VetoableChangeListenerProxy|VetoableChangeSupport|View|ViewFactory|ViewportLayout|ViewportUI|"
+            "VirtualMachineError|Visibility|VisibilityHelper|VM_ABSTRACT|VM_CUSTOM|VM_NONE|VM_TRUNCATABLE|VMID|"
+            "VoiceStatus|"
+            "Void|VolatileCallSite|VolatileImage|W3CDomHandler|W3CEndpointReference|W3CEndpointReferenceBuilder|"
+            "Watchable|"
+            "WatchEvent|WatchEvent.Kind|WatchEvent.Modifier|WatchKey|WatchService|WCharSeqHelper|WCharSeqHolder|"
+            "WeakHashMap|WeakReference|WebEndpoint|WebFault|WebMethod|WebParam|WebParam.Mode|WebResult|WebRowSet|"
+            "WebService|WebServiceClient|WebServiceContext|WebServiceException|WebServiceFeature|"
+            "WebServiceFeatureAnnotation|WebServicePermission|WebServiceProvider|WebServiceRef|WebServiceRefs|"
+            "WeekFields|"
+            "WildcardType|WildcardType|Window|Window.Type|WindowAdapter|WindowConstants|WindowEvent|"
+            "WindowFocusListener|"
+            "WindowListener|WindowStateListener|WrappedPlainView|Wrapper|WritableByteChannel|WritableRaster|"
+            "WritableRenderedImage|WriteAbortedException|WritePendingException|Writer|WrongAdapter|WrongAdapterHelper|"
+            "WrongMethodTypeException|WrongPolicy|WrongPolicyHelper|WrongTransaction|WrongTransactionHelper|"
+            "WrongTransactionHolder|WStringSeqHelper|WStringSeqHolder|WStringValueHelper|X500Principal|"
+            "X500PrivateCredential|X509Certificate|X509Certificate|X509CertSelector|X509CRL|X509CRLEntry|"
+            "X509CRLSelector|"
+            "X509Data|X509EncodedKeySpec|X509ExtendedKeyManager|X509ExtendedTrustManager|X509Extension|"
+            "X509IssuerSerial|"
+            "X509KeyManager|X509TrustManager|XAConnection|XADataSource|XAException|XAResource|Xid|XmlAccessOrder|"
+            "XmlAccessorOrder|XmlAccessorType|XmlAccessType|XmlAdapter|XmlAnyAttribute|XmlAnyElement|XmlAttachmentRef|"
+            "XmlAttribute|XMLConstants|XMLCryptoContext|XMLDecoder|XmlElement|XmlElement.DEFAULT|XmlElementDecl|"
+            "XmlElementDecl.GLOBAL|XmlElementRef|XmlElementRef.DEFAULT|XmlElementRefs|XmlElements|XmlElementWrapper|"
+            "XMLEncoder|XmlEnum|XmlEnumValue|XMLEvent|XMLEventAllocator|XMLEventConsumer|XMLEventFactory|"
+            "XMLEventReader|"
+            "XMLEventWriter|XMLFilter|XMLFilterImpl|XMLFormatter|XMLGregorianCalendar|XmlID|XmlIDREF|"
+            "XmlInlineBinaryData|"
+            "XMLInputFactory|XmlJavaTypeAdapter|XmlJavaTypeAdapter.DEFAULT|XmlJavaTypeAdapters|XmlList|XmlMimeType|"
+            "XmlMixed|XmlNs|XmlNsForm|XMLObject|XMLOutputFactory|XMLParseException|XmlReader|XMLReader|"
+            "XMLReaderAdapter|"
+            "XMLReaderFactory|XmlRegistry|XMLReporter|XMLResolver|XmlRootElement|XmlSchema|XmlSchemaType|XmlSchemaType."
+            "DEFAULT|XmlSchemaTypes|XmlSeeAlso|XMLSignature|XMLSignature.SignatureValue|XMLSignatureException|"
+            "XMLSignatureFactory|XMLSignContext|XMLStreamConstants|XMLStreamException|XMLStreamReader|XMLStreamWriter|"
+            "XMLStructure|XmlTransient|XmlType|XmlType.DEFAULT|XMLValidateContext|XmlValue|XmlWriter|XPath|"
+            "XPathConstants|"
+            "XPathException|XPathExpression|XPathExpressionException|XPathFactory|XPathFactoryConfigurationException|"
+            "XPathFilter2ParameterSpec|XPathFilterParameterSpec|XPathFunction|XPathFunctionException|"
+            "XPathFunctionResolver|"
+            "XPathType|XPathType.Filter|XPathVariableResolver|XSLTTransformParameterSpec|Year|YearMonth|ZipEntry|"
+            "ZipError|"
+            "ZipException|ZipFile|ZipInputStream|ZipOutputStream|ZonedDateTime|ZoneId|ZoneOffset|ZoneOffsetTransition|"
+            "ZoneOffsetTransitionRule|ZoneOffsetTransitionRule.TimeDefinition|ZoneRules|ZoneRulesException|"
+            "ZoneRulesProvider|ZoneView|_BindingIteratorImplBase|_BindingIteratorStub|_DynAnyFactoryStub|_DynAnyStub|_"
+            "DynArrayStub|_DynEnumStub|_DynFixedStub|_DynSequenceStub|_DynStructStub|_DynUnionStub|_DynValueStub|_"
+            "IDLTypeStub|_NamingContextExtStub|_NamingContextImplBase|_NamingContextStub|_PolicyStub|_Remote_Stub|_"
+            "ServantActivatorStub|_ServantLocatorStub)(?!(@|#|\\$))\\b");
+        rule.format = javaFormat;
+        highlightingRules.append(rule);
+    }
+    else if (progLan == "json") {
+        quoteFormat.setFontWeight(QFont::Bold);
+        errorFormat.setForeground(Red);
+        errorFormat.setFontUnderline(true);
+    }
+
+    if (showWhiteSpace) {
+        rule.pattern.setPattern("\\s+");
+        rule.format = whiteSpaceFormat;
+        highlightingRules.append(rule);
+    }
+
+    /************
+     * Comments *
+     ************/
+
+    /* single line comments */
+    rule.pattern.setPattern(QString());
+    if (progLan == "c" || progLan == "cpp" || Lang == "javascript" || progLan == "qml" || progLan == "scss" ||
+        progLan == "dart" || progLan == "go" || progLan == "rust" || progLan == "java") {
+        rule.pattern.setPattern("//.*");  // why had I set it to ("//(?!\\*).*")?
+    }
+    else if (progLan == "php") {
+        rule.pattern.setPattern("(//|#).*");
+    }
+    else if (progLan == "python" || progLan == "qmake" || progLan == "gtkrc" || progLan == "toml") {
+        rule.pattern.setPattern("#.*");  // or "#[^\n]*"
+    }
+    else if (progLan == "desktop" || progLan == "config" || progLan == "theme") {
+        rule.pattern.setPattern("^\\s*#.*");  // only at start
+    }
+    else if (progLan == "openbox") {
+        rule.pattern.setPattern("^\\s*(#|\\!).*");  // only at start
+    }
+    /*else if (progLan == "deb")
+    {
+        rule.pattern.setPattern ("^#[^\\s:]+:(?=\\s*)");
+    }*/
+    else if (progLan == "m3u") {
+        rule.pattern.setPattern("^\\s+#|^#(?!(EXTM3U|EXTINF))");
+    }
+    else if (progLan == "troff")
+        rule.pattern.setPattern("\\\\\"|\\\\#|\\.\\s*\\\\\"");
+    else if (progLan == "LaTeX")
+        rule.pattern.setPattern("%.*");
+    else if (progLan == "tcl")
+        rule.pattern.setPattern("^\\s*#|(?<!\\\\)(\\\\{2})*\\K;\\s*#");
+
+    if (!rule.pattern.pattern().isEmpty()) {
+        rule.format = commentFormat;
+        highlightingRules.append(rule);
+    }
+
+    /* multiline comments */
+    if (progLan == "c" || progLan == "cpp" || progLan == "javascript" || progLan == "qml" || progLan == "php" ||
+        progLan == "css" || progLan == "scss" || progLan == "fountain" || progLan == "dart" || progLan == "go" ||
+        progLan == "rust" || progLan == "java") {
+        commentStartExpression.setPattern("/\\*");
+        commentEndExpression.setPattern("\\*/");
+    }
+    else if (progLan == "python") {
+        commentStartExpression.setPattern("\"\"\"|\'\'\'");
+        commentEndExpression = commentStartExpression;
+    }
+    else if (progLan == "xml" || progLan == "markdown") {
+        commentStartExpression.setPattern("<!--");
+        commentEndExpression.setPattern("-->");
+    }
+    else if (progLan == "html") {
+        errorFormat.setForeground(Red);
+        errorFormat.setFontUnderline(true);
+
+        htmlCommetStart.setPattern("<!--");
+        htmlCommetEnd.setPattern("-->");
+
+        /* CSS and JS inside HTML (see htmlCSSHighlighter and htmlJavascript) */
+        htmlSubcommetStart.setPattern("/\\*");
+        htmlSubcommetEnd.setPattern("\\*/");
+
+        commentStartExpression = htmlCommetStart;
+        commentEndExpression = htmlCommetEnd;
+    }
+    else if (progLan == "perl") {
+        commentStartExpression.setPattern("^=[A-Za-z0-9_]+($|\\s+)");
+        commentEndExpression.setPattern("^=cut.*");
+    }
+    else if (progLan == "ruby") {
+        commentStartExpression.setPattern("=begin\\s*$");
+        commentEndExpression.setPattern("^=end\\s*$");
+    }
+}
+
+}  // namespace Texxy

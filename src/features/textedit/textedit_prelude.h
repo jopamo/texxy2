@@ -1,0 +1,42 @@
+#pragma once
+
+#include <QApplication>
+#include <QClipboard>
+#include <QColor>
+#include <QCursor>
+#include <QDesktopServices>
+#include <QEvent>
+#include <QFontMetrics>
+#include <QFontMetricsF>
+#include <QKeyEvent>
+#include <QKeySequence>
+#include <QList>
+#include <QLocale>
+#include <QMimeData>
+#include <QMouseEvent>
+#include <QObject>
+#include <QPainter>
+#include <QPaintEvent>
+#include <QPoint>
+#include <QProcess>
+#include <QRect>
+#include <QRegularExpression>
+#include <QRegularExpressionMatch>
+#include <QScrollBar>
+#include <QStandardPaths>
+#include <QStringList>
+#include <QTextBlock>
+#include <QTextCursor>
+#include <QTextDocument>
+#include <QTextDocumentFragment>
+#include <QTextEdit>
+#include <QTextOption>
+#include <QTimer>
+#include <QUrl>
+#include <QWheelEvent>
+
+#include <algorithm>
+#include <cmath>
+#include <utility>
+
+#include "textedit/textedit.h"

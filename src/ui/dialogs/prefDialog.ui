@@ -1,0 +1,1443 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Texxy::PrefDialog</class>
+ <widget class="QDialog" name="prefDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>450</width>
+    <height>530</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Preferences</string>
+  </property>
+  <property name="sizeGripEnabled">
+   <bool>true</bool>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="0" column="0" colspan="2">
+    <widget class="QTabWidget" name="tabWidget">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <property name="documentMode">
+      <bool>true</bool>
+     </property>
+     <widget class="QWidget" name="tab">
+      <attribute name="title">
+       <string>Window</string>
+      </attribute>
+      <layout class="QGridLayout" name="gridLayout_1">
+       <item row="0" column="0">
+        <widget class="QScrollArea" name="windowScrollArea">
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <widget class="QWidget" name="scrollAreaWidgetContents1">
+          <property name="geometry">
+           <rect>
+            <x>0</x>
+            <y>0</y>
+            <width>434</width>
+            <height>442</height>
+           </rect>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout">
+           <property name="spacing">
+            <number>0</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QGroupBox" name="windowGoupBox">
+             <property name="title">
+              <string>Window Settings</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_1">
+              <item>
+               <widget class="QCheckBox" name="winSizeBox">
+                <property name="text">
+                 <string>Remember window &amp;size on closing</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout">
+                <item>
+                 <widget class="QLabel" name="sizeLable">
+                  <property name="toolTip">
+                   <string>Window frame is excluded.</string>
+                  </property>
+                  <property name="text">
+                   <string>Start with this size: </string>
+                  </property>
+                  <property name="indent">
+                   <number>5</number>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinX">
+                  <property name="toolTip">
+                   <string>Window frame is excluded.</string>
+                  </property>
+                  <property name="suffix">
+                   <string> px</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="mLabel">
+                  <property name="toolTip">
+                   <string>Window frame is excluded.</string>
+                  </property>
+                  <property name="text">
+                   <string>×</string>
+                  </property>
+                  <property name="alignment">
+                   <set>Qt::AlignCenter</set>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinY">
+                  <property name="toolTip">
+                   <string>Window frame is excluded.</string>
+                  </property>
+                  <property name="suffix">
+                   <string> px</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::MinimumExpanding</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>5</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="winPosBox">
+                <property name="toolTip">
+                 <string>Enforcing a window position is not recommended
+and may not work with some window managers.</string>
+                </property>
+                <property name="text">
+                 <string>Remember window &amp;position on closing</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="sidePaneBox">
+                <property name="toolTip">
+                 <string>Most suitable with sessions
+but without tab functionality.</string>
+                </property>
+                <property name="text">
+                 <string>Start with side-pane mode</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_1">
+                <item>
+                 <spacer name="horizontalSpacer_1">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::Fixed</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>22</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="sidePaneSizeBox">
+                  <property name="toolTip">
+                   <string>Uncheck for 1/5 of the width.</string>
+                  </property>
+                  <property name="text">
+                   <string>Remember splitter position</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="toolbarBox">
+                <property name="text">
+                 <string>Do not show &amp;toolbar</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="menubarBox">
+                <property name="toolTip">
+                 <string>If the menubar is hidden,
+a menu button appears on the toolbar.</string>
+                </property>
+                <property name="text">
+                 <string>Do not show &amp;menubar</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="menubarTitleBox">
+                <property name="toolTip">
+                 <string>Double clicking on the title toggles the maximized state.
+The title also has a right click menu when a file is opened.</string>
+                </property>
+                <property name="text">
+                 <string>Show window title on menubar</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="accelBox">
+                <property name="toolTip">
+                 <string>Menubar accelerators are activated by Alt
+and may interfere with customized shortcuts.</string>
+                </property>
+                <property name="text">
+                 <string>Disable menubar accelerators</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="iconBox">
+                <property name="toolTip">
+                 <string>Internal icons are used by default.</string>
+                </property>
+                <property name="text">
+                 <string>Use system icons where possible</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="searchbarBox">
+                <property name="text">
+                 <string>Hide search &amp;bar by default</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="searchHistoryBox">
+                <property name="toolTip">
+                 <string>By default, each search entry
+has a separate search history.</string>
+                </property>
+                <property name="text">
+                 <string>Use a shared search history</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="statusBox">
+                <property name="text">
+                 <string>Always show st&amp;atus bar</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_2">
+                <item>
+                 <spacer name="horizontalSpacer_2">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::Fixed</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>22</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="statusCursorsBox">
+                  <property name="text">
+                   <string>Show cursor position on status bar</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_3">
+                <item>
+                 <widget class="QLabel" name="tabLabel">
+                  <property name="toolTip">
+                   <string>Will take effect after closing this dialog.</string>
+                  </property>
+                  <property name="text">
+                   <string>Tab position: </string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QComboBox" name="tabCombo">
+                  <property name="toolTip">
+                   <string>Will take effect after closing this dialog.</string>
+                  </property>
+                  <item>
+                   <property name="text">
+                    <string>North</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>South</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>West</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>East</string>
+                   </property>
+                  </item>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_3">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::MinimumExpanding</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>5</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="tabBox">
+                <property name="toolTip">
+                 <string>This means that, for LTR, Alt+Right goes to the first tab
+after the last tab is activated, and the same for Alt+Left.
+
+Tab navigation with mouse wheel is not affected.</string>
+                </property>
+                <property name="text">
+                 <string>Tab navigation wraps &amp;around</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="singleTabBox">
+                <property name="toolTip">
+                 <string>If this is checked, not only you will lose the informative
+tooltip and context menu of a single tab but you could not
+merge a single tabbed window into another one by tab drag-
+and-drop either.</string>
+                </property>
+                <property name="text">
+                 <string>&amp;Do not show a single tab</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="lastTabBox">
+                <property name="text">
+                 <string>Close window on closing its last tab</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="windowBox">
+                <property name="toolTip">
+                 <string>By default, if a Texxy window exists on the
+current desktop, files will be opened in its tabs.
+
+However, some desktop environments may not
+report that they have multiple desktops.</string>
+                </property>
+                <property name="text">
+                 <string>Always open in separate windows</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="nativeDialogBox">
+                <property name="toolTip">
+                 <string>If this is checked, the file dialog provided by the current
+desktop environment will be used instead of the Qt file dialog.
+
+Some desktop environments, like KDE and LXQt, provide files dialogs.</string>
+                </property>
+                <property name="text">
+                 <string>Native file dialog</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="verticalSpacer">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeType">
+                 <enum>QSizePolicy::MinimumExpanding</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>5</width>
+                  <height>1</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_2">
+      <attribute name="title">
+       <string>Text</string>
+      </attribute>
+      <layout class="QGridLayout" name="gridLayout_3">
+       <item row="0" column="0">
+        <widget class="QScrollArea" name="textScrollArea">
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <widget class="QWidget" name="scrollAreaWidgetContents">
+          <property name="geometry">
+           <rect>
+            <x>0</x>
+            <y>0</y>
+            <width>393</width>
+            <height>522</height>
+           </rect>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_2">
+           <property name="spacing">
+            <number>0</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QGroupBox" name="textGoupBox">
+             <property name="title">
+              <string>Text Editor</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_3">
+              <item>
+               <widget class="QCheckBox" name="fontBox">
+                <property name="toolTip">
+                 <string>Uncheck for Monospace.</string>
+                </property>
+                <property name="text">
+                 <string>Remember &amp;font</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="wrapBox">
+                <property name="text">
+                 <string>&amp;Wrap lines by default</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="indentBox">
+                <property name="text">
+                 <string>Auto-&amp;indent by default</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="autoBracketBox">
+                <property name="toolTip">
+                 <string>This covers parentheses, braces, brackets and quotes.</string>
+                </property>
+                <property name="text">
+                 <string>Auto-&amp;bracket</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="autoReplaceBox">
+                <property name="toolTip">
+                 <string>By default, a triple period is replaced with an ellipsis
+and a double hyphen with a long dash while typing,
+under proper circumstances.</string>
+                </property>
+                <property name="text">
+                 <string>Replace triple periods and double hyphens while typing</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="lineBox">
+                <property name="text">
+                 <string>Always show line &amp;numbers</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="selHighlightBox">
+                <property name="toolTip">
+                 <string>Highlight case-sensitive and whole matches
+of the selected text.</string>
+                </property>
+                <property name="text">
+                 <string>Selection highlighting</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="syntaxBox">
+                <property name="text">
+                 <string>Highlight s&amp;yntax by default</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_4">
+                <item>
+                 <spacer name="horizontalSpacer_4">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::Fixed</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>22</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="enforceSyntaxBox">
+                  <property name="toolTip">
+                   <string>This creates a menu button on the
+status bar for changing the syntax.</string>
+                  </property>
+                  <property name="text">
+                   <string>Support syntax override</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_5">
+                <item>
+                 <spacer name="horizontalSpacer_5">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::Fixed</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>22</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QLabel" name="label">
+                  <property name="text">
+                   <string>Never highlight syntax for files &gt; </string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="spinBox">
+                  <property name="suffix">
+                   <string> MiB</string>
+                  </property>
+                  <property name="minimum">
+                   <number>1</number>
+                  </property>
+                  <property name="maximum">
+                   <number>10</number>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_6">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::MinimumExpanding</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>5</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="whiteSpaceBox">
+                <property name="toolTip">
+                 <string>Show spaces, tabs and tab lines
+when the syntax is highlighted.</string>
+                </property>
+                <property name="text">
+                 <string>Show whitespaces</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="endingsBox">
+                <property name="text">
+                 <string>Show line and document ends</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_6">
+                <item>
+                 <widget class="QCheckBox" name="vLineBox">
+                  <property name="toolTip">
+                   <string>The vertical position lines will be drawn only if
+the editor font has a fixed pitch (like Monospace).</string>
+                  </property>
+                  <property name="text">
+                   <string>Show vertical lines starting from this position:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="vLineSpin">
+                  <property name="toolTip">
+                   <string>The vertical position lines will be drawn only if
+the editor font has a fixed pitch (like Monospace).</string>
+                  </property>
+                  <property name="minimum">
+                   <number>10</number>
+                  </property>
+                  <property name="maximum">
+                   <number>999</number>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_7">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::MinimumExpanding</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>5</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="colBox">
+                <property name="toolTip">
+                 <string>Needs window reopening to take effect.</string>
+                </property>
+                <property name="text">
+                 <string>Dark c&amp;olor scheme</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_7">
+                <item>
+                 <spacer name="horizontalSpacer_8">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::Fixed</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>22</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QLabel" name="colorValueLabel">
+                  <property name="toolTip">
+                   <string>The color value of the background.
+255 means white while 0 means black.
+
+For the light background, it can be
+between 230 and 255; for the dark
+background, between 0 and 50.
+
+Needs window reopening to take effect.</string>
+                  </property>
+                  <property name="text">
+                   <string>Background color value: </string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="colorValueSpin">
+                  <property name="toolTip">
+                   <string>The color value of the background.
+255 means white while 0 means black.
+
+For the light background, it can be
+between 230 and 255; for the dark
+background, between 0 and 50.
+
+Needs window reopening to take effect.</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_9">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::MinimumExpanding</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>5</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="marginBox">
+                <property name="text">
+                 <string>Add a small margin around text</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_8">
+                <item>
+                 <widget class="QLabel" name="dateLabel">
+                  <property name="toolTip">
+                   <string>Used for pasting the date and time.
+Leave empty for the system default.
+
+Takes effect after closing this dialog.</string>
+                  </property>
+                  <property name="text">
+                   <string>Date and time format:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="dateEdit">
+                  <property name="toolTip">
+                   <string>Used for pasting the date and time.
+Leave empty for the system default.
+
+Takes effect after closing this dialog.</string>
+                  </property>
+                  <property name="placeholderText">
+                   <string notr="true">MMM dd, yyyy, hh:mm:ss</string>
+                  </property>
+                  <property name="clearButtonEnabled">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_9">
+                <item>
+                 <widget class="QLabel" name="textTabLabel">
+                  <property name="text">
+                   <string>Text tab size:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="textTabSpin">
+                  <property name="suffix">
+                   <string> spaces</string>
+                  </property>
+                  <property name="minimum">
+                   <number>2</number>
+                  </property>
+                  <property name="maximum">
+                   <number>10</number>
+                  </property>
+                  <property name="value">
+                   <number>4</number>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_10">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::Expanding</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>5</width>
+                    <height>5</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="lastLineBox">
+                <property name="toolTip">
+                 <string>Some text editors cannot open a document
+whose last line is not empty.</string>
+                </property>
+                <property name="text">
+                 <string>Ensure an empty last line on saving</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="trailingSpacesBox">
+                <property name="text">
+                 <string>Remove trailing spaces on saving</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="thickCursorBox">
+                <property name="text">
+                 <string>Thick text cursor</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="inertiaBox">
+                <property name="toolTip">
+                 <string>Should the mouse wheel scrolling be inertial
+if the cursor is inside the text view?</string>
+                </property>
+                <property name="text">
+                 <string>Inertial scrolling with mouse wheel</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="verticalSpacer_1">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeType">
+                 <enum>QSizePolicy::MinimumExpanding</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>5</width>
+                  <height>1</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_3">
+      <attribute name="title">
+       <string>Files</string>
+      </attribute>
+      <layout class="QGridLayout" name="gridLayout_4">
+       <item row="0" column="0">
+        <widget class="QGroupBox" name="groupBox">
+         <property name="title">
+          <string>File Management</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_4">
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_10">
+            <item>
+             <widget class="QLabel" name="recentLabel">
+              <property name="toolTip">
+               <string>The maximum number of recently modified or
+opened files Texxy shows. The default
+is 10.
+
+Needs application restart to take effect.</string>
+              </property>
+              <property name="text">
+               <string>Number of recent files: </string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="recentSpin">
+              <property name="toolTip">
+               <string>The maximum number of recently modified or
+opened files Texxy shows. The default
+is 10.
+
+Needs application restart to take effect.</string>
+              </property>
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>50</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer_11">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeType">
+               <enum>QSizePolicy::MinimumExpanding</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>5</width>
+                <height>5</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_11">
+            <item>
+             <spacer name="horizontalSpacer_12">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeType">
+               <enum>QSizePolicy::Fixed</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>20</width>
+                <height>5</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="modifiedButton">
+              <property name="text">
+               <string>Show recentl&amp;y modified files</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_12">
+            <item>
+             <spacer name="horizontalSpacer_13">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeType">
+               <enum>QSizePolicy::Fixed</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>20</width>
+                <height>5</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="openedButton">
+              <property name="text">
+               <string>Show recentl&amp;y opened files</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="lastFilesBox">
+            <property name="toolTip">
+             <string>Only if their number is not greater than 50.</string>
+            </property>
+            <property name="text">
+             <string>Start with files of last window</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="exeBox">
+            <property name="toolTip">
+             <string>This only includes executable files written
+in script languages like Shell and Python.
+
+If it is checked and the opened file is
+executable, the file will be executed by clicking
+the Run button, that appears on the toolbar/filemenu
+when needed, or by its shortcut Ctrl+E. Then, the
+process could be killed by Ctrl+Alt+E.</string>
+            </property>
+            <property name="text">
+             <string>Run executable scripts</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_13">
+            <item>
+             <spacer name="horizontalSpacer_14">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeType">
+               <enum>QSizePolicy::Fixed</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>22</width>
+                <height>5</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QLabel" name="commandLabel">
+              <property name="toolTip">
+               <string>This can be any starting command with
+arguments, for example, &quot;xterm -hold&quot;
+for running the process in XTerm.
+
+If the command is left empty, the file
+will be executed directly.
+
+If the script is not run in a terminal
+emulator, the output and error messages
+will be shown by a popup dialog.</string>
+              </property>
+              <property name="text">
+               <string>Start with this command: </string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="commandEdit">
+              <property name="toolTip">
+               <string>This can be any starting command with
+arguments, for example, &quot;xterm -hold&quot;
+for running the process in XTerm.
+
+If the command is left empty, the file
+will be executed directly.
+
+If the script is not run in a terminal
+emulator, the output and error messages
+will be shown by a popup dialog.</string>
+              </property>
+              <property name="placeholderText">
+               <string>Command + Arguments</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_14">
+            <item>
+             <widget class="QCheckBox" name="autoSaveBox">
+              <property name="toolTip">
+               <string>Only for files that exist and can be saved.</string>
+              </property>
+              <property name="text">
+               <string>Save changes to opened files every:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="autoSaveSpin">
+              <property name="toolTip">
+               <string>Only for files that exist and can be saved.</string>
+              </property>
+              <property name="suffix">
+               <string> min</string>
+              </property>
+              <property name="minimum">
+               <number>1</number>
+              </property>
+              <property name="maximum">
+               <number>60</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer_15">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeType">
+               <enum>QSizePolicy::MinimumExpanding</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>5</width>
+                <height>5</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="unmodifiedSaveBox">
+            <property name="toolTip">
+             <string>If this is checked, the Save button/menu-item could
+be used also when the opened file is not modified.
+
+This can be useful under certain circumstances,
+e.g. for changing the time stamp or removing the
+trailing spaces of a text file.</string>
+            </property>
+            <property name="text">
+             <string>Allow saving unmodified files</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="skipNonTextBox">
+            <property name="toolTip">
+             <string>Show a warning instead.</string>
+            </property>
+            <property name="text">
+             <string>Do not permit opening of non-text files</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="pastePathsBox">
+            <property name="toolTip">
+             <string>By default, when files are copied, they will
+be opened if they are pasted into Texxy.</string>
+            </property>
+            <property name="text">
+             <string>Paste paths instead of files</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="verticalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::MinimumExpanding</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>5</width>
+              <height>1</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_4">
+      <attribute name="title">
+       <string>Shortcuts</string>
+      </attribute>
+      <layout class="QGridLayout" name="gridLayout_5">
+       <property name="bottomMargin">
+        <number>5</number>
+       </property>
+       <item row="0" column="0">
+        <widget class="QTableWidget" name="tableWidget">
+         <property name="editTriggers">
+          <set>QAbstractItemView::DoubleClicked|QAbstractItemView::EditKeyPressed|QAbstractItemView::SelectedClicked</set>
+         </property>
+         <property name="alternatingRowColors">
+          <bool>true</bool>
+         </property>
+         <property name="selectionMode">
+          <enum>QAbstractItemView::SingleSelection</enum>
+         </property>
+         <attribute name="verticalHeaderVisible">
+          <bool>false</bool>
+         </attribute>
+         <column>
+          <property name="text">
+           <string>Action</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Shortcut</string>
+          </property>
+         </column>
+        </widget>
+       </item>
+       <item row="1" column="0" alignment="Qt::AlignRight">
+        <widget class="QPushButton" name="defaultButton">
+         <property name="toolTip">
+          <string>Restore default shortcuts.</string>
+         </property>
+         <property name="text">
+          <string>Default</string>
+         </property>
+         <property name="autoDefault">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_5">
+      <attribute name="title">
+       <string>Syntax Colors</string>
+      </attribute>
+      <layout class="QGridLayout" name="gridLayout_2">
+       <property name="bottomMargin">
+        <number>5</number>
+       </property>
+       <item row="0" column="0">
+        <layout class="QHBoxLayout" name="horizontalLayout_16">
+         <property name="spacing">
+          <number>5</number>
+         </property>
+         <property name="topMargin">
+          <number>5</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="whiteSpaceLabel">
+           <property name="text">
+            <string>Whitespace color value:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="whiteSpaceSpin"/>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_16">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>5</width>
+             <height>5</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item row="1" column="0">
+        <layout class="QHBoxLayout" name="horizontalLayout_17">
+         <property name="spacing">
+          <number>5</number>
+         </property>
+         <property name="bottomMargin">
+          <number>5</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="curLineLabel">
+           <property name="toolTip">
+            <string>Has effect only if line numbers are shown.</string>
+           </property>
+           <property name="text">
+            <string>Current line highlight value:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="curLineSpin">
+           <property name="toolTip">
+            <string>Has effect only if line numbers are shown.</string>
+           </property>
+           <property name="specialValueText">
+            <string>Default</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_17">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>5</width>
+             <height>5</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item row="2" column="0">
+        <widget class="QTableWidget" name="syntaxTableWidget">
+         <property name="alternatingRowColors">
+          <bool>true</bool>
+         </property>
+         <property name="selectionMode">
+          <enum>QAbstractItemView::SingleSelection</enum>
+         </property>
+         <attribute name="verticalHeaderVisible">
+          <bool>false</bool>
+         </attribute>
+         <column>
+          <property name="text">
+           <string>Element</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Text Color</string>
+          </property>
+         </column>
+        </widget>
+       </item>
+       <item row="3" column="0" alignment="Qt::AlignRight">
+        <widget class="QPushButton" name="defaultSyntaxButton">
+         <property name="toolTip">
+          <string>Restore default syntax colors.</string>
+         </property>
+         <property name="text">
+          <string>Default</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item row="1" column="0" colspan="2">
+    <widget class="QLabel" name="promptLabel">
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+     <property name="textInteractionFlags">
+      <set>Qt::NoTextInteraction</set>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="0" alignment="Qt::AlignLeft">
+    <widget class="QPushButton" name="helpButton">
+     <property name="text">
+      <string>Help</string>
+     </property>
+     <property name="icon">
+      <iconset theme="help-contextual">
+       <normaloff>.</normaloff>.</iconset>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="1" alignment="Qt::AlignRight">
+    <widget class="QPushButton" name="closeButton">
+     <property name="text">
+      <string>Close</string>
+     </property>
+     <property name="icon">
+      <iconset theme="dialog-close">
+       <normaloff>.</normaloff>.</iconset>
+     </property>
+     <property name="default">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
