@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="texxy/data/texxy.svg" alt="Texxy logo" width="160">
+  <img src="resources/icons/texxy.svg" alt="Texxy logo" width="160">
 </p>
 
 # Texxy
