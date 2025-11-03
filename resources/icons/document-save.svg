@@ -1,49 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-  <defs>
-    <linearGradient id="bodyGradient" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#3A3F51"/>
-      <stop offset="100%" stop-color="#1E212B"/>
-    </linearGradient>
-    <linearGradient id="labelGradient" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#FF6F91"/>
-      <stop offset="100%" stop-color="#FFA07A"/>
-    </linearGradient>
-    <linearGradient id="slotGradient" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#00C9A7"/>
-      <stop offset="100%" stop-color="#007F6D"/>
-    </linearGradient>
-    <style>
-      .glow { filter: drop-shadow(0 0 0.5px #ffffff33); }
-    </style>
-  </defs>
-
-  <!-- Disk body -->
-  <path d="M2,2v12h12V4.281L11.719,2H2z"
-        fill="url(#bodyGradient)"
-        stroke="#888" stroke-width="0.2"
-        class="glow"/>
-
-  <!-- Label area -->
-  <rect x="4" y="3" width="4" height="3" rx="0.2"
-        fill="url(#labelGradient)"
-        stroke="#FFDAB9" stroke-width="0.1"
-        class="glow"/>
-
-  <!-- Metal slot -->
-  <rect x="6" y="3" width="2" height="3"
-        fill="url(#slotGradient)"
-        stroke="#0ff" stroke-width="0.1"
-        class="glow"/>
-
-  <!-- Main slot area (bottom) -->
-  <rect x="5" y="10" width="6" height="3" rx="0.2"
-        fill="#8F00FF"
-        stroke="#DA70D6" stroke-width="0.1"
-        class="glow"/>
-
-  <!-- Small detail notch -->
-  <rect x="3" y="6" width="0.6" height="1.2"
-        fill="#FFD700"
-        stroke="#FFA500" stroke-width="0.05"
-        class="glow"/>
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="c" y2="1">
+<stop stop-color="#3A3F51" offset="0"/>
+<stop stop-color="#1E212B" offset="1"/>
+</linearGradient>
+<linearGradient id="b">
+<stop stop-color="#FF6F91" offset="0"/>
+<stop stop-color="#FFA07A" offset="1"/>
+</linearGradient>
+<linearGradient id="a" x2="0" y2="1">
+<stop stop-color="#00C9A7" offset="0"/>
+<stop stop-color="#007F6D" offset="1"/>
+</linearGradient>
+<style>.glow { filter: drop-shadow(0 0 0.5px #ffffff33); }</style>
+</defs>
+<!-- Disk body -->
+<path class="glow" d="M2,2v12h12V4.281L11.719,2H2z" fill="url(#c)" stroke="#888" stroke-width=".2"/>
+<g stroke-width=".1">
+<!-- Label area -->
+<rect class="glow" x="4" y="3" width="4" height="3" rx=".2" fill="url(#b)" stroke="#FFDAB9"/>
+<!-- Metal slot -->
+<rect class="glow" x="6" y="3" width="2" height="3" fill="url(#a)" stroke="#0ff"/>
+<!-- Main slot area (bottom) -->
+<rect class="glow" x="5" y="10" width="6" height="3" rx=".2" fill="#8F00FF" stroke="#DA70D6"/>
+<!-- Small detail notch -->
+</g>
+<rect class="glow" x="3" y="6" width=".6" height="1.2" fill="#FFD700" stroke="#FFA500" stroke-width=".05"/>
 </svg>
