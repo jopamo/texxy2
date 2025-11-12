@@ -97,11 +97,11 @@ Config::Config()
       saveLastFilesList_(false),
       cursorPosRetrieved_(false),
       whiteSpaceValue_(180),
-      curLineHighlight_(-1){
-          font_.setStyleHint(QFont::Monospace);
-      }
+      curLineHighlight_(-1) {
+    font_.setStyleHint(QFont::Monospace);
+}
 
-      Config::~Config() {}
+Config::~Config() {}
 
 void Config::readConfig() {
     Settings settings("texxy", "texxy");
