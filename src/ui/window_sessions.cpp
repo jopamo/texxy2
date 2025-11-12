@@ -1,65 +1,84 @@
 // src/ui/window_sessions.cpp
-/*
- * window_sessions.cpp
- */
 
 #include "texxy_ui_prelude.h"
 
 namespace Texxy {
 
 void TexxyWindow::executeProcess() {
-    QList<QDialog*> dialogs = findChildren<QDialog*>();
-    for (int i = 0; i < dialogs.count(); ++i) {
-        if (dialogs.at(i)->isModal())
+    // block when a modal dialog is up so shortcuts don't leak through
+    const auto dialogs = findChildren<QDialog*>();
+    for (QDialog* d : dialogs) {
+        if (d && d->isModal())
             return;  // shortcut may work when there's a modal dialog
     }
     closeWarningBar();
 
-    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
+    const auto* app = static_cast<TexxyApplication*>(qApp);
+    const Config config = app->getConfig();
     if (!config.getExecuteScripts())
         return;
 
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        if (tabPage->findChild<QProcess*>(QString(), Qt::FindDirectChildrenOnly)) {
-            showWarningBar("<center><b><big>" + tr("Another process is running in this tab!") + "</big></b></center>" +
-                               "<center><i>" + tr("Only one process is allowed per tab.") + "</i></center>",
-                           15);
-            return;
-        }
+    auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
+    if (!tabPage)
+        return;
 
-        QString fName = tabPage->textEdit()->getFileName();
-        if (!isScriptLang(tabPage->textEdit()->getProg()) || !QFileInfo(fName).isExecutable()) {
-            ui->actionRun->setVisible(false);
-            return;
-        }
-
-        QProcess* process = new QProcess(tabPage);
-        process->setObjectName(fName);  // to put it into the message dialog
-        connect(process, &QProcess::readyReadStandardOutput, this, &TexxyWindow::displayOutput);
-        connect(process, &QProcess::readyReadStandardError, this, &TexxyWindow::displayError);
-        QString command = config.getExecuteCommand();
-        if (!command.isEmpty()) {
-            QStringList commandParts = QProcess::splitCommand(command);
-            if (!commandParts.isEmpty()) {
-                command = commandParts.takeAt(0);  // there may be arguments
-                process->start(command, QStringList() << commandParts << fName);
-            }
-            else
-                process->start(fName, QStringList());
-        }
-        else
-            process->start(fName, QStringList());
-        /* old-fashioned: connect(process, static_cast<void(QProcess::*)(int,
-         * QProcess::ExitStatus)>(&QProcess::finished),... */
-        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                [=](int /*exitCode*/, QProcess::ExitStatus /*exitStatus*/) { process->deleteLater(); });
+    if (tabPage->findChild<QProcess*>(QString(), Qt::FindDirectChildrenOnly)) {
+        showWarningBar(
+            "<center><b><big>" + tr("Another process is running in this tab!") + "</big></b></center>"
+            "<center><i>" + tr("Only one process is allowed per tab.") + "</i></center>",
+            15);
+        return;
     }
+
+    const QString fName = tabPage->textEdit()->getFileName();
+    if (!isScriptLang(tabPage->textEdit()->getProg()) || !QFileInfo(fName).isExecutable()) {
+        ui->actionRun->setVisible(false);
+        return;
+    }
+
+    auto* process = new QProcess(tabPage);
+    process->setObjectName(fName);  // used in messages
+    process->setProgram(QString()); // set later after command parsing
+    process->setProcessChannelMode(QProcess::SeparateChannels); // keep stdout/stderr split
+    process->setWorkingDirectory(QFileInfo(fName).absolutePath());
+
+    connect(process, &QProcess::readyReadStandardOutput, this, &TexxyWindow::displayOutput);
+    connect(process, &QProcess::readyReadStandardError, this, &TexxyWindow::displayError);
+    connect(process, &QProcess::finished, process, &QObject::deleteLater);
+
+    // build command line from config, supporting optional %f placeholder
+    QString command = config.getExecuteCommand();
+    QStringList args;
+    if (!command.isEmpty()) {
+        QStringList parts = QProcess::splitCommand(command);
+        if (!parts.isEmpty()) {
+            QString prog = parts.takeFirst();
+            // if user provided %f anywhere, replace it, otherwise append file name at the end
+            for (QString& p : parts)
+                p.replace("%f", fName);
+            bool hadPlaceholder = false;
+            for (const QString& p : parts)
+                if (p.contains(fName))
+                    hadPlaceholder = true;
+            if (!hadPlaceholder)
+                parts << fName;
+
+            process->start(prog, parts);
+            return;
+        }
+    }
+
+    // default to executing the file directly if no executeCommand configured
+    process->start(fName, QStringList());
 }
 
 void TexxyWindow::exitProcess() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        if (QProcess* process = tabPage->findChild<QProcess*>(QString(), Qt::FindDirectChildrenOnly))
-            process->kill();
+    auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
+    if (!tabPage)
+        return;
+
+    if (auto* process = tabPage->findChild<QProcess*>(QString(), Qt::FindDirectChildrenOnly)) {
+        process->kill();  // fast stop on user request
     }
 }
 
@@ -75,23 +94,23 @@ void TexxyWindow::manageSessions() {
     if (!isReady())
         return;
 
-    /* first see whether the Sessions dialog is already open... */
-    TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
+    // if a Sessions dialog already exists anywhere, focus it
+    auto* singleton = static_cast<TexxyApplication*>(qApp);
     for (int i = 0; i < singleton->Wins.count(); ++i) {
         const auto dialogs = singleton->Wins.at(i)->findChildren<QDialog*>();
-        for (const auto& dialog : dialogs) {
-            if (dialog->objectName() == "sessionDialog") {
+        for (QDialog* dialog : dialogs) {
+            if (dialog && dialog->objectName() == "sessionDialog") {
                 stealFocus(dialog);
                 return;
             }
         }
     }
-    /* ... and if not, create a non-modal Sessions dialog */
-    SessionDialog* dlg = new SessionDialog(this);
+
+    // otherwise create a non modal Sessions dialog
+    auto* dlg = new SessionDialog(this);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setObjectName("sessionDialog"); // ensure future lookups work
     dlg->show();
-    /*move (x() + width()/2 - dlg.width()/2,
-          y() + height()/2 - dlg.height()/ 2);*/
     dlg->raise();
     dlg->activateWindow();
 }
@@ -99,20 +118,22 @@ void TexxyWindow::manageSessions() {
 void TexxyWindow::pauseAutoSaving(bool pause) {
     if (!autoSaver_)
         return;
+
     if (pause) {
-        if (!autoSaverPause_.isValid())  // don't start it again
-        {
+        if (!autoSaverPause_.isValid()) { // don't start it again
             autoSaverPause_.start();
             autoSaverRemainingTime_ = autoSaver_->remainingTime();
         }
+        return;
     }
-    else if (!locked_ && autoSaverPause_.isValid()) {
+
+    if (!locked_ && autoSaverPause_.isValid()) {
         if (autoSaverPause_.hasExpired(autoSaverRemainingTime_)) {
             autoSaverPause_.invalidate();
             autoSave();
-        }
-        else
+        } else {
             autoSaverPause_.invalidate();
+        }
     }
 }
 
@@ -124,8 +145,10 @@ void TexxyWindow::startAutoSaving(bool start, int interval) {
         }
         autoSaver_->setInterval(interval * 1000 * 60);
         autoSaver_->start();
+        return;
     }
-    else if (autoSaver_) {
+
+    if (autoSaver_) {
         if (autoSaver_->isActive())
             autoSaver_->stop();
         delete autoSaver_;
@@ -134,12 +157,11 @@ void TexxyWindow::startAutoSaving(bool start, int interval) {
 }
 
 void TexxyWindow::autoSave() {
-    /* since there are important differences between this
-       and saveFile(), we can't use the latter here.
-       We especially don't show any prompt or warning here. */
+    // different from saveFile so we avoid prompts or warnings
     if (autoSaverPause_.isValid())
         return;
-    QTimer::singleShot(0, this, [=]() {
+
+    QTimer::singleShot(0, this, [this]() {
         if (!autoSaver_ || !autoSaver_->isActive())
             return;
         saveAllFiles(false);  // without warning
