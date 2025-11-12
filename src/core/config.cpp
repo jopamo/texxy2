@@ -4,7 +4,10 @@
  */
 
 #include "config.h"
+
+#include <QFont>
 #include <QKeySequence>
+#include <QVariant>
 #include <cmath>
 
 namespace Texxy {
@@ -21,8 +24,11 @@ static inline int readClampedInt(Settings& s, const char* key, int def, int lo, 
 }
 
 static inline QSize readSizeOr(Settings& s, const char* key, const QSize& def) {
-    const QSize z = s.value(key, def).toSize();
-    return (!z.isValid() || z.isNull()) ? def : z;
+    const QVariant vv = s.value(key, def);
+    const QSize z = vv.toSize();
+    if (!z.isValid() || z.isNull() || z.width() <= 0 || z.height() <= 0)
+        return def;
+    return z;
 }
 
 static inline void pruneToLimit(QStringList& xs, int limit) {
@@ -91,9 +97,11 @@ Config::Config()
       saveLastFilesList_(false),
       cursorPosRetrieved_(false),
       whiteSpaceValue_(180),
-      curLineHighlight_(-1) {}
+      curLineHighlight_(-1){
+          font_.setStyleHint(QFont::Monospace)  // prefer a fixed-pitch font
+      }
 
-Config::~Config() {}
+      Config::~Config() {}
 
 void Config::readConfig() {
     Settings settings("texxy", "texxy");
@@ -144,7 +152,7 @@ void Config::readConfig() {
 
     {
         const int pos = settings.value("tabPosition").toInt();
-        if (pos > 0 && pos <= 3)
+        if (pos >= 0 && pos <= 3)
             tabPosition_ = pos;
     }
 
@@ -164,14 +172,20 @@ void Config::readConfig() {
 
     if (settings.value("font") == "none") {
         remFont_ = false;
+        font_ = QFont("Monospace");
+        font_.setStyleHint(QFont::Monospace);
         font_.setPointSize(std::max(QFont().pointSize(), 9));
     }
     else {
         const QString fontStr = settings.value("font").toString();
-        if (!fontStr.isEmpty())
+        if (!fontStr.isEmpty()) {
             font_.fromString(fontStr);
-        else
+        }
+        else {
+            font_ = QFont("Monospace");
             font_.setPointSize(std::max(QFont().pointSize(), 9));
+        }
+        font_.setStyleHint(QFont::Monospace);
     }
 
     wrapByDefault_ = !readBool(settings, "noWrap", false);
@@ -238,6 +252,7 @@ void Config::readConfig() {
 
 void Config::resetFont() {
     font_ = QFont("Monospace");
+    font_.setStyleHint(QFont::Monospace);
     font_.setPointSize(std::max(QFont().pointSize(), 9));
 }
 
@@ -427,6 +442,9 @@ void Config::writeConfig() {
 
     writeCursorPos();
     writeSyntaxColors();
+
+    // ensure values hit disk on abnormal exits
+    settings.sync();
 }
 
 void Config::readCursorPos() {
@@ -442,6 +460,7 @@ void Config::writeCursorPos() {
     if (settings.isWritable()) {
         if (!cursorPos_.isEmpty())
             settings.setValue("cursorPositions", cursorPos_);
+        settings.sync();
     }
 
     Settings settingsLastCur("texxy", "texxy_last_cursor_pos");
@@ -450,6 +469,7 @@ void Config::writeCursorPos() {
             settingsLastCur.setValue("cursorPositions", lasFilesCursorPos_);
         else
             settingsLastCur.remove("cursorPositions");
+        settingsLastCur.sync();
     }
 }
 
@@ -463,6 +483,7 @@ void Config::writeSyntaxColors() {
         }
         else {
             settingsColors.clear();
+            settingsColors.sync();
             return;
         }
     }
@@ -479,6 +500,8 @@ void Config::writeSyntaxColors() {
     settingsColors.beginGroup("curLineHighlight");
     settingsColors.setValue("value", curLineHighlight_);
     settingsColors.endGroup();
+
+    settingsColors.sync();
 }
 
 void Config::setWhiteSpaceValue(int value) {
@@ -495,12 +518,14 @@ void Config::setWhiteSpaceValue(int value) {
 
     const int average = (getMinWhiteSpaceValue() + getMaxWhiteSpaceValue()) / 2;
     QColor ws(value, value, value);
-    while (colors.contains(ws)) {
+    int guard = 0;  // prevent pathological loops if color sets are huge
+    while (colors.contains(ws) && guard++ < 512) {
         int r = ws.red();
         if (value >= average)
             --r;
         else
             ++r;
+        r = std::clamp(r, getMinWhiteSpaceValue(), getMaxWhiteSpaceValue());
         ws = QColor(r, r, r);
     }
     whiteSpaceValue_ = ws.red();
