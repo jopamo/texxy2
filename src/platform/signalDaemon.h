@@ -18,35 +18,28 @@ class signalDaemon : public QObject {
 
     void watchUnixSignals();
 
-    static void hupSignalHandler(int);
-    static void termSignalHandler(int);
-    static void intSignalHandler(int);
-    static void quitSignalHandler(int);
-
    signals:
     void sigQUIT();
 
-   private slots:
-    void handleSigHup();
-    void handleSigTerm();
-    void handleSigINT();
-    void handleSigQUIT();
-
    private:
-    [[nodiscard]] bool watchSignal(int sig);
+    struct Pipe {
+        int sig;
+        std::array<int, 2> fds{-1, -1};
+    };
+
+    static constexpr int kSignalCount = 4;
+
+    [[nodiscard]] bool watchSignal(Pipe& pipe);
+    void handleSignal(int index);
+
+    [[nodiscard]] static Pipe* pipeForSignal(int sig);
+    static void signalHandler(int sig);
     static bool makeSocketPair(std::array<int, 2>& fds);
     static void closePair(std::array<int, 2>& fds) noexcept;
     static void drainFd(int fd) noexcept;
 
-    static inline std::array<int, 2> sighupFd{-1, -1};
-    static inline std::array<int, 2> sigtermFd{-1, -1};
-    static inline std::array<int, 2> sigintFd{-1, -1};
-    static inline std::array<int, 2> sigquitFd{-1, -1};
-
-    QSocketNotifier* snHup_ = nullptr;
-    QSocketNotifier* snTerm_ = nullptr;
-    QSocketNotifier* snInt_ = nullptr;
-    QSocketNotifier* snQuit_ = nullptr;
+    static std::array<Pipe, kSignalCount> pipes_;
+    std::array<QSocketNotifier*, kSignalCount> notifiers_{};
 };
 
 }  // namespace Texxy

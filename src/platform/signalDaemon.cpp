@@ -14,6 +14,13 @@ namespace {
 constexpr char kTick = 1;  // single byte used to tickle the notifier
 }
 
+std::array<signalDaemon::Pipe, signalDaemon::kSignalCount> signalDaemon::pipes_{{
+    {SIGHUP},
+    {SIGTERM},
+    {SIGINT},
+    {SIGQUIT},
+}};
+
 // prefer CLOEXEC and NONBLOCK for safety and responsiveness
 bool signalDaemon::makeSocketPair(std::array<int, 2>& fds) {
 #ifdef SOCK_CLOEXEC
@@ -57,131 +64,71 @@ void signalDaemon::drainFd(int fd) noexcept {
 }
 
 signalDaemon::signalDaemon(QObject* parent) : QObject(parent) {
-    if (makeSocketPair(sighupFd)) {
-        snHup_ = new QSocketNotifier(sighupFd[1], QSocketNotifier::Read, this);
-        connect(snHup_, &QSocketNotifier::activated, this, &signalDaemon::handleSigHup);
-    }
+    for (int i = 0; i < kSignalCount; ++i) {
+        Pipe& pipe = pipes_.at(i);
+        if (!makeSocketPair(pipe.fds))
+            continue;
 
-    if (makeSocketPair(sigtermFd)) {
-        snTerm_ = new QSocketNotifier(sigtermFd[1], QSocketNotifier::Read, this);
-        connect(snTerm_, &QSocketNotifier::activated, this, &signalDaemon::handleSigTerm);
-    }
-
-    if (makeSocketPair(sigintFd)) {
-        snInt_ = new QSocketNotifier(sigintFd[1], QSocketNotifier::Read, this);
-        connect(snInt_, &QSocketNotifier::activated, this, &signalDaemon::handleSigINT);
-    }
-
-    if (makeSocketPair(sigquitFd)) {
-        snQuit_ = new QSocketNotifier(sigquitFd[1], QSocketNotifier::Read, this);
-        connect(snQuit_, &QSocketNotifier::activated, this, &signalDaemon::handleSigQUIT);
+        auto* notifier = new QSocketNotifier(pipe.fds[1], QSocketNotifier::Read, this);
+        const int idx = i;
+        connect(notifier, &QSocketNotifier::activated, this, [this, idx]() { handleSignal(idx); });
+        notifiers_.at(i) = notifier;
     }
 }
 
 signalDaemon::~signalDaemon() {
     // notifiers are parented to this and auto-deleted by QObject dtor
-    closePair(sighupFd);
-    closePair(sigtermFd);
-    closePair(sigintFd);
-    closePair(sigquitFd);
+    for (Pipe& pipe : pipes_)
+        closePair(pipe.fds);
 }
 
 // async-signal-safe handlers write a single byte and return
-void signalDaemon::hupSignalHandler(int) {
-    const char b = kTick;
-    (void)::write(sighupFd[0], &b, sizeof(b));
-}
-
-void signalDaemon::termSignalHandler(int) {
-    const char b = kTick;
-    (void)::write(sigtermFd[0], &b, sizeof(b));
-}
-
-void signalDaemon::intSignalHandler(int) {
-    const char b = kTick;
-    (void)::write(sigintFd[0], &b, sizeof(b));
-}
-
-void signalDaemon::quitSignalHandler(int) {
-    const char b = kTick;
-    (void)::write(sigquitFd[0], &b, sizeof(b));
+void signalDaemon::signalHandler(int sig) {
+    if (Pipe* pipe = pipeForSignal(sig)) {
+        const char b = kTick;
+        (void)::write(pipe->fds[0], &b, sizeof(b));
+    }
 }
 
 // each handler disables the notifier, drains all pending bytes, emits merged signal, then reenables
-void signalDaemon::handleSigHup() {
-    if (!snHup_)
+void signalDaemon::handleSignal(int index) {
+    if (index < 0 || index >= kSignalCount)
         return;
-    snHup_->setEnabled(false);
-    drainFd(sighupFd[1]);
-    emit sigQUIT();
-    snHup_->setEnabled(true);
-}
 
-void signalDaemon::handleSigTerm() {
-    if (!snTerm_)
+    QSocketNotifier* notifier = notifiers_.at(index);
+    if (!notifier)
         return;
-    snTerm_->setEnabled(false);
-    drainFd(sigtermFd[1]);
-    emit sigQUIT();
-    snTerm_->setEnabled(true);
-}
 
-void signalDaemon::handleSigINT() {
-    if (!snInt_)
-        return;
-    snInt_->setEnabled(false);
-    drainFd(sigintFd[1]);
+    notifier->setEnabled(false);
+    drainFd(pipes_.at(index).fds[1]);
     emit sigQUIT();
-    snInt_->setEnabled(true);
-}
-
-void signalDaemon::handleSigQUIT() {
-    if (!snQuit_)
-        return;
-    snQuit_->setEnabled(false);
-    drainFd(sigquitFd[1]);
-    emit sigQUIT();
-    snQuit_->setEnabled(true);
+    notifier->setEnabled(true);
 }
 
 // install handlers with SA_RESTART to reduce EINTR and use an empty mask for minimal latency
-bool signalDaemon::watchSignal(int sig) {
-    struct sigaction sa{};
-    switch (sig) {
-        case SIGHUP:
-            if (!snHup_)
-                return false;
-            sa.sa_handler = &signalDaemon::hupSignalHandler;
-            break;
-        case SIGTERM:
-            if (!snTerm_)
-                return false;
-            sa.sa_handler = &signalDaemon::termSignalHandler;
-            break;
-        case SIGINT:
-            if (!snInt_)
-                return false;
-            sa.sa_handler = &signalDaemon::intSignalHandler;
-            break;
-        case SIGQUIT:
-            if (!snQuit_)
-                return false;
-            sa.sa_handler = &signalDaemon::quitSignalHandler;
-            break;
-        default:
-            return false;
-    }
+bool signalDaemon::watchSignal(Pipe& pipe) {
+    if (pipe.fds[0] < 0 || pipe.fds[1] < 0)
+        return false;
 
+    struct sigaction sa{};
     ::sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
-    return (::sigaction(sig, &sa, nullptr) == 0);
+    sa.sa_handler = &signalDaemon::signalHandler;
+    return (::sigaction(pipe.sig, &sa, nullptr) == 0);
 }
 
 void signalDaemon::watchUnixSignals() {
-    [[maybe_unused]] const bool okH = watchSignal(SIGHUP);
-    [[maybe_unused]] const bool okT = watchSignal(SIGTERM);
-    [[maybe_unused]] const bool okI = watchSignal(SIGINT);
-    [[maybe_unused]] const bool okQ = watchSignal(SIGQUIT);
+    for (Pipe& pipe : pipes_) {
+        [[maybe_unused]] const bool ok = watchSignal(pipe);
+    }
+}
+
+signalDaemon::Pipe* signalDaemon::pipeForSignal(int sig) {
+    for (Pipe& pipe : pipes_) {
+        if (pipe.sig == sig)
+            return &pipe;
+    }
+    return nullptr;
 }
 
 }  // namespace Texxy
