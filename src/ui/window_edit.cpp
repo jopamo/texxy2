@@ -1,127 +1,142 @@
 // src/ui/window_edit.cpp
+
 #include "texxy_ui_prelude.h"
 
 namespace Texxy {
 
+namespace {
+// get current tab page safely
+static inline TabPage* curTab(TexxyWindow* w) {
+    return qobject_cast<TabPage*>(w->ui->tabWidget->currentWidget());
+}
+
+// get current text editor safely
+static inline TextEdit* curEdit(TexxyWindow* w) {
+    if (TabPage* p = curTab(w))
+        return p->textEdit();
+    return nullptr;
+}
+}  // namespace
+
 void TexxyWindow::cutText() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->cut();
+    if (TextEdit* te = curEdit(this))
+        te->cut();
 }
 
 void TexxyWindow::copyText() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->copy();
+    if (TextEdit* te = curEdit(this))
+        te->copy();
 }
 
 void TexxyWindow::pasteText() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->paste();
+    if (TextEdit* te = curEdit(this))
+        te->paste();
 }
 
 void TexxyWindow::toSoftTabs() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
+    if (TextEdit* te = curEdit(this)) {
         makeBusy();
-        bool res = tabPage->textEdit()->toSoftTabs();
+        const bool res = te->toSoftTabs();
         unbusy();
         if (res) {
             removeGreenSel();
-            showWarningBar("<center><b><big>" + tr("Text tabs are converted to spaces.") + "</big></b></center>");
+            showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>")
+                               .arg(tr("Text tabs are converted to spaces.")));
         }
     }
 }
 
 void TexxyWindow::insertDate() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
-        QString format = config.getDateFormat();
-        tabPage->textEdit()->insertPlainText(format.isEmpty()
-                                                 ? locale().toString(QDateTime::currentDateTime(), QLocale::ShortFormat)
-                                                 : locale().toString(QDateTime::currentDateTime(), format));
+    if (TextEdit* te = curEdit(this)) {
+        const auto& config = static_cast<TexxyApplication*>(qApp)->getConfig();
+        const QString format = config.getDateFormat();
+        te->insertPlainText(format.isEmpty()
+                                ? locale().toString(QDateTime::currentDateTime(), QLocale::ShortFormat)
+                                : locale().toString(QDateTime::currentDateTime(), format));
     }
 }
 
 void TexxyWindow::deleteText() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        TextEdit* textEdit = tabPage->textEdit();
-        if (!textEdit->isReadOnly())
-            textEdit->deleteText();
+    if (TextEdit* te = curEdit(this)) {
+        if (!te->isReadOnly())
+            te->deleteText();
     }
 }
 
 void TexxyWindow::selectAllText() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->selectAll();
+    if (TextEdit* te = curEdit(this))
+        te->selectAll();
 }
 
 void TexxyWindow::upperCase() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        TextEdit* textEdit = tabPage->textEdit();
-        if (!textEdit->isReadOnly())
-            textEdit->insertPlainText(locale().toUpper(textEdit->textCursor().selectedText()));
+    if (TextEdit* te = curEdit(this)) {
+        if (!te->isReadOnly())
+            te->insertPlainText(locale().toUpper(te->textCursor().selectedText()));
     }
 }
 
 void TexxyWindow::lowerCase() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        TextEdit* textEdit = tabPage->textEdit();
-        if (!textEdit->isReadOnly())
-            textEdit->insertPlainText(locale().toLower(textEdit->textCursor().selectedText()));
+    if (TextEdit* te = curEdit(this)) {
+        if (!te->isReadOnly())
+            te->insertPlainText(locale().toLower(te->textCursor().selectedText()));
     }
 }
 
 void TexxyWindow::startCase() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        TextEdit* textEdit = tabPage->textEdit();
-        if (!textEdit->isReadOnly()) {
-            bool showWarning = false;
-            QTextCursor cur = textEdit->textCursor();
-            int start = std::min(cur.anchor(), cur.position());
-            int end = std::max(cur.anchor(), cur.position());
-            if (end > start + 100000) {
-                showWarning = true;
-                end = start + 100000;
+    if (TextEdit* te = curEdit(this)) {
+        if (te->isReadOnly())
+            return;
+
+        bool showWarn = false;
+        QTextCursor cur = te->textCursor();
+        int start = std::min(cur.anchor(), cur.position());
+        int end = std::max(cur.anchor(), cur.position());
+        if (end > start + 100000) {
+            showWarn = true;
+            end = start + 100000;
+        }
+
+        cur.setPosition(start);
+        QString blockText = cur.block().text();
+        int blockPos = cur.block().position();
+        while (start > blockPos && !blockText.at(start - blockPos - 1).isSpace())
+            --start;
+
+        cur.setPosition(end);
+        blockText = cur.block().text();
+        blockPos = cur.block().position();
+        while (end < blockPos + blockText.size() && !blockText.at(end - blockPos).isSpace())
+            ++end;
+
+        cur.setPosition(start);
+        cur.setPosition(end, QTextCursor::KeepAnchor);
+        QString str = locale().toLower(cur.selectedText());
+
+        int idx = 0;
+        QRegularExpressionMatch match;
+        // WARNING: QTextCursor::selectedText() uses U+2029 instead of \n
+        while ((idx = str.indexOf(QRegularExpression(QStringLiteral("[^\\s\\-\\.\\n\\x{2029}]+")), idx, &match)) > -1) {
+            QChar c = str.at(idx);
+            // find the first letter from the start of the word
+            int i = 0;
+            while (!c.isLetter() && i + 1 < match.capturedLength()) {
+                ++i;
+                c = str.at(idx + i);
             }
+            str.replace(idx + i, 1, c.toUpper());
+            idx += match.capturedLength();
+        }
 
-            cur.setPosition(start);
-            QString blockText = cur.block().text();
-            int blockPos = cur.block().position();
-            while (start > blockPos && !blockText.at(start - blockPos - 1).isSpace())
-                --start;
+        cur.beginEditBlock();
+        te->setTextCursor(cur);
+        te->insertPlainText(str);
+        te->ensureCursorVisible();
+        cur.endEditBlock();
 
-            cur.setPosition(end);
-            blockText = cur.block().text();
-            blockPos = cur.block().position();
-            while (end < blockPos + blockText.size() && !blockText.at(end - blockPos).isSpace())
-                ++end;
-
-            cur.setPosition(start);
-            cur.setPosition(end, QTextCursor::KeepAnchor);
-            QString str = locale().toLower(cur.selectedText());
-
-            start = 0;
-            QRegularExpressionMatch match;
-            /* WARNING: "QTextCursor::selectedText()" uses "U+2029" instead of "\n". */
-            while ((start = str.indexOf(QRegularExpression("[^\\s\\-\\.\\n\\x{2029}]+"), start, &match)) > -1) {
-                QChar c = str.at(start);
-                /* find the first letter from the start of the word */
-                int i = 0;
-                while (!c.isLetter() && i + 1 < match.capturedLength()) {
-                    ++i;
-                    c = str.at(start + i);
-                }
-                str.replace(start + i, 1, c.toUpper());
-                start += match.capturedLength();
-            }
-
-            cur.beginEditBlock();
-            textEdit->setTextCursor(cur);
-            textEdit->insertPlainText(str);
-            textEdit->ensureCursorVisible();
-            cur.endEditBlock();
-
-            if (showWarning)
-                showWarningBar("<center><b><big>" + tr("The selected text was too long.") + "</big></b></center>\n" +
-                               "<center>" + tr("It is not fully processed.") + "</center>");
+        if (showWarn) {
+            showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>\n<center>%2</center>")
+                               .arg(tr("The selected text was too long."),
+                                    tr("It is not fully processed.")));
         }
     }
 }
@@ -135,17 +150,16 @@ void TexxyWindow::showingEditMenu() {
     ui->ActionSpaceDupeRSort->setEnabled(false);
     ui->actionPaste->setEnabled(false);
 
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        TextEdit* textEdit = tabPage->textEdit();
-        if (!textEdit->isReadOnly()) {
-            ui->actionPaste->setEnabled(textEdit->pastingIsPossible());
-            const QTextCursor cursor = textEdit->textCursor();
+    if (TextEdit* te = curEdit(this)) {
+        if (!te->isReadOnly()) {
+            ui->actionPaste->setEnabled(te->pastingIsPossible());
+            const QTextCursor cursor = te->textCursor();
             if (cursor.hasSelection()) {
-                const QString selection = cursor.selectedText();
-                if (!selection.isEmpty()) {
+                const QString sel = cursor.selectedText();
+                if (!sel.isEmpty()) {
                     ui->ActionSpaceDupeSort->setEnabled(true);
                     ui->ActionSpaceDupeRSort->setEnabled(true);
-                    if (selection.contains(QChar(QChar::ParagraphSeparator))) {
+                    if (sel.contains(QChar(QChar::ParagraphSeparator))) {
                         ui->actionSortLines->setEnabled(true);
                         ui->actionRSortLines->setEnabled(true);
                         ui->ActionRmDupeSort->setEnabled(true);
@@ -158,99 +172,96 @@ void TexxyWindow::showingEditMenu() {
 }
 
 void TexxyWindow::hidngEditMenu() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        /* QPlainTextEdit::canPaste() isn't consulted because it might change later */
-        ui->actionPaste->setEnabled(!tabPage->textEdit()->isReadOnly());
-    }
+    if (TextEdit* te = curEdit(this))
+        ui->actionPaste->setEnabled(!te->isReadOnly());
     else
         ui->actionPaste->setEnabled(false);
 }
 
 void TexxyWindow::sortLines() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->sortLines(qobject_cast<QAction*>(QObject::sender()) == ui->actionRSortLines);
+    if (TextEdit* te = curEdit(this))
+        te->sortLines(qobject_cast<QAction*>(QObject::sender()) == ui->actionRSortLines);
 }
 
 void TexxyWindow::rmDupeSort() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->rmDupeSort(qobject_cast<QAction*>(QObject::sender()) == ui->ActionRmDupeRSort);
+    if (TextEdit* te = curEdit(this))
+        te->rmDupeSort(qobject_cast<QAction*>(QObject::sender()) == ui->ActionRmDupeRSort);
 }
 
 void TexxyWindow::spaceDupeSort() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->spaceDupeSort(qobject_cast<QAction*>(QObject::sender()) == ui->ActionSpaceDupeRSort);
+    if (TextEdit* te = curEdit(this))
+        te->spaceDupeSort(qobject_cast<QAction*>(QObject::sender()) == ui->ActionSpaceDupeRSort);
 }
 
 void TexxyWindow::makeEditable() {
     if (!isReady())
         return;
 
-    TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
-    if (tabPage == nullptr)
+    TabPage* tabPage = curTab(this);
+    if (!tabPage)
         return;
 
-    TextEdit* textEdit = tabPage->textEdit();
-    bool textIsSelected = textEdit->textCursor().hasSelection();
-    bool hasColumn = !textEdit->getColSel().isEmpty();
+    TextEdit* te = tabPage->textEdit();
+    const bool hasSel = te->textCursor().hasSelection();
+    const bool hasColumn = !te->getColSel().isEmpty();
 
-    textEdit->setReadOnly(false);
-    Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
-    if (!textEdit->hasDarkScheme()) {
-        textEdit->viewport()->setStyleSheet(QString(".QWidget {"
-                                                    "color: black;"
-                                                    "background-color: rgb(%1, %1, %1);}")
-                                                .arg(config.getLightBgColorValue()));
-    }
-    else {
-        textEdit->viewport()->setStyleSheet(QString(".QWidget {"
-                                                    "color: white;"
-                                                    "background-color: rgb(%1, %1, %1);}")
-                                                .arg(config.getDarkBgColorValue()));
+    te->setReadOnly(false);
+    const auto& config = static_cast<TexxyApplication*>(qApp)->getConfig();
+    if (!te->hasDarkScheme()) {
+        te->viewport()->setStyleSheet(QStringLiteral(".QWidget {color: black; background-color: rgb(%1, %1, %1);}")
+                                          .arg(config.getLightBgColorValue()));
+    } else {
+        te->viewport()->setStyleSheet(QStringLiteral(".QWidget {color: white; background-color: rgb(%1, %1, %1);}")
+                                          .arg(config.getDarkBgColorValue()));
     }
     ui->actionEdit->setVisible(false);
 
-    ui->actionPaste->setEnabled(true);  // it might change temporarily in showingEditMenu()
+    ui->actionPaste->setEnabled(true);  // might change temporarily in showingEditMenu
     ui->actionSoftTab->setEnabled(true);
     ui->actionDate->setEnabled(true);
-    ui->actionCopy->setEnabled(textIsSelected || hasColumn);
-    ui->actionCut->setEnabled(textIsSelected || hasColumn);
-    ui->actionDelete->setEnabled(textIsSelected || hasColumn);
-    ui->actionUpperCase->setEnabled(textIsSelected);
-    ui->actionLowerCase->setEnabled(textIsSelected);
-    ui->actionStartCase->setEnabled(textIsSelected);
-    connect(textEdit, &TextEdit::canCopy, ui->actionCut, &QAction::setEnabled);
-    connect(textEdit, &TextEdit::canCopy, ui->actionDelete, &QAction::setEnabled);
-    connect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionUpperCase, &QAction::setEnabled);
-    connect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionLowerCase, &QAction::setEnabled);
-    connect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionStartCase, &QAction::setEnabled);
+    ui->actionCopy->setEnabled(hasSel || hasColumn);
+    ui->actionCut->setEnabled(hasSel || hasColumn);
+    ui->actionDelete->setEnabled(hasSel || hasColumn);
+    ui->actionUpperCase->setEnabled(hasSel);
+    ui->actionLowerCase->setEnabled(hasSel);
+    ui->actionStartCase->setEnabled(hasSel);
+    connect(te, &TextEdit::canCopy, ui->actionCut, &QAction::setEnabled);
+    connect(te, &TextEdit::canCopy, ui->actionDelete, &QAction::setEnabled);
+    connect(te, &QPlainTextEdit::copyAvailable, ui->actionUpperCase, &QAction::setEnabled);
+    connect(te, &QPlainTextEdit::copyAvailable, ui->actionLowerCase, &QAction::setEnabled);
+    connect(te, &QPlainTextEdit::copyAvailable, ui->actionStartCase, &QAction::setEnabled);
     if (config.getSaveUnmodified())
         ui->actionSave->setEnabled(true);
 }
 
 void TexxyWindow::undoing() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->undo();
+    if (TextEdit* te = curEdit(this))
+        te->undo();
 }
 
 void TexxyWindow::redoing() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->redo();
+    if (TextEdit* te = curEdit(this))
+        te->redo();
 }
 
 void TexxyWindow::addRemoveLangBtn(bool add) {
     static QStringList langList;
     if (langList.isEmpty()) {  // no "url" for the language button
-        langList << "c" << "cmake" << "config" << "cpp" << "css"
-                 << "dart" << "deb" << "diff" << "fountain" << "html"
-                 << "java" << "javascript" << "json" << "LaTeX" << "go"
-                 << "log" << "lua" << "m3u" << "markdown" << "makefile"
-                 << "pascal" << "perl" << "php" << "python" << "qmake"
-                 << "qml" << "reST" << "ruby" << "rust" << "scss"
-                 << "sh" << "tcl" << "toml" << "troff" << "xml" << "yaml";
+        langList << QStringLiteral("c") << QStringLiteral("cmake") << QStringLiteral("config") << QStringLiteral("cpp")
+                 << QStringLiteral("css") << QStringLiteral("dart") << QStringLiteral("deb") << QStringLiteral("diff")
+                 << QStringLiteral("fountain") << QStringLiteral("html") << QStringLiteral("java")
+                 << QStringLiteral("javascript") << QStringLiteral("json") << QStringLiteral("LaTeX")
+                 << QStringLiteral("go") << QStringLiteral("log") << QStringLiteral("lua") << QStringLiteral("m3u")
+                 << QStringLiteral("markdown") << QStringLiteral("makefile") << QStringLiteral("pascal")
+                 << QStringLiteral("perl") << QStringLiteral("php") << QStringLiteral("python")
+                 << QStringLiteral("qmake") << QStringLiteral("qml") << QStringLiteral("reST")
+                 << QStringLiteral("ruby") << QStringLiteral("rust") << QStringLiteral("scss") << QStringLiteral("sh")
+                 << QStringLiteral("tcl") << QStringLiteral("toml") << QStringLiteral("troff")
+                 << QStringLiteral("xml") << QStringLiteral("yaml");
         langList.sort(Qt::CaseInsensitive);
     }
 
-    QToolButton* langButton = ui->statusBar->findChild<QToolButton*>("langButton");
+    QToolButton* langButton = ui->statusBar->findChild<QToolButton*>(QStringLiteral("langButton"));
     if (!add) {
         langs_.clear();
         if (langButton) {
@@ -259,32 +270,31 @@ void TexxyWindow::addRemoveLangBtn(bool add) {
         }
 
         for (int i = 0; i < ui->tabWidget->count(); ++i) {
-            TextEdit* textEdit = qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit();
-            if (!textEdit->getLang().isEmpty()) {
-                textEdit->setLang(QString());  // remove the enforced syntax
+            TextEdit* te = qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit();
+            if (!te->getLang().isEmpty()) {
+                te->setLang(QString());  // remove the enforced syntax
                 if (ui->actionSyntax->isChecked()) {
-                    syntaxHighlighting(textEdit, false);
-                    syntaxHighlighting(textEdit);
+                    syntaxHighlighting(te, false);
+                    syntaxHighlighting(te);
                 }
             }
         }
     }
-    else if (!langButton && langs_.isEmpty())  // not needed; we clear it on removing the button
-    {
-        QString normal = tr("Normal");
+    else if (!langButton && langs_.isEmpty()) {
+        const QString normal = tr("Normal");
         langButton = new QToolButton();
-        langButton->setObjectName("langButton");
+        langButton->setObjectName(QStringLiteral("langButton"));
         langButton->setFocusPolicy(Qt::NoFocus);
         langButton->setAutoRaise(true);
         langButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
         langButton->setText(normal);
         langButton->setPopupMode(QToolButton::InstantPopup);
 
-        /* a searchable menu */
+        // searchable menu
         class Menu : public QMenu {
            public:
-            Menu(QWidget* parent = nullptr) : QMenu(parent) { selectionTimer_ = nullptr; }
-            ~Menu() {
+            Menu(QWidget* parent = nullptr) : QMenu(parent), selectionTimer_(nullptr) {}
+            ~Menu() override {
                 if (selectionTimer_) {
                     if (selectionTimer_->isActive())
                         selectionTimer_->stop();
@@ -294,25 +304,27 @@ void TexxyWindow::addRemoveLangBtn(bool add) {
 
            protected:
             void keyPressEvent(QKeyEvent* e) override {
-                if (selectionTimer_ == nullptr) {
+                if (!selectionTimer_) {
                     selectionTimer_ = new QTimer();
                     connect(selectionTimer_, &QTimer::timeout, this, [this] {
                         if (txt_.isEmpty())
                             return;
-                        const auto allActions = actions();
-                        for (const auto& a : allActions) {  // search in starting strings first
-                            QString aTxt = a->text();
-                            aTxt.remove('&');
-                            if (aTxt.startsWith(txt_, Qt::CaseInsensitive)) {
+                        const auto acts = actions();
+                        // search in starting strings first
+                        for (QAction* a : acts) {
+                            QString t = a->text();
+                            t.remove('&');
+                            if (t.startsWith(txt_, Qt::CaseInsensitive)) {
                                 setActiveAction(a);
                                 txt_.clear();
                                 return;
                             }
                         }
-                        for (const auto& a : allActions) {  // now, search for containing strings
-                            QString aTxt = a->text();
-                            aTxt.remove('&');
-                            if (aTxt.contains(txt_, Qt::CaseInsensitive)) {
+                        // search for containing strings
+                        for (QAction* a : acts) {
+                            QString t = a->text();
+                            t.remove('&');
+                            if (t.contains(txt_, Qt::CaseInsensitive)) {
                                 setActiveAction(a);
                                 break;
                             }
@@ -330,11 +342,11 @@ void TexxyWindow::addRemoveLangBtn(bool add) {
             QString txt_;
         };
 
-        Menu* menu = new Menu(langButton);
-        QActionGroup* aGroup = new QActionGroup(langButton);
-        QAction* action;
+        auto* menu = new Menu(langButton);
+        auto* aGroup = new QActionGroup(langButton);
+        QAction* action = nullptr;
         for (int i = 0; i < langList.count(); ++i) {
-            QString lang = langList.at(i);
+            const QString lang = langList.at(i);
             action = menu->addAction(lang);
             action->setCheckable(true);
             action->setActionGroup(aGroup);
@@ -351,76 +363,71 @@ void TexxyWindow::addRemoveLangBtn(bool add) {
         ui->statusBar->insertPermanentWidget(2, langButton);
         connect(aGroup, &QActionGroup::triggered, this, &TexxyWindow::enforceLang);
 
-        /* update the language button if this is called from outside c-tor
-           (otherwise, tabswitch() will do it) */
-        if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
+        // update the language button if called from outside ctor
+        if (TabPage* tabPage = curTab(this))
             updateLangBtn(tabPage->textEdit());
     }
 }
+
 void TexxyWindow::editorContextMenu(const QPoint& p) {
-    /* NOTE: The editor's customized context menu comes here (and not in
-             the TextEdit class) for not duplicating actions, although that
-             requires extra signal connections and disconnections on tab DND. */
+    // the editor's customized context menu lives here to avoid duplicating actions
 
     TextEdit* textEdit = qobject_cast<TextEdit*>(QObject::sender());
-    if (textEdit == nullptr)
+    if (!textEdit)
         return;
 
-    /* Announce that the mouse button is released, because "TextEdit::mouseReleaseEvent"
-       is not called when the context menu is shown. This is only needed for removing the
-       column highlight on changing the cursor position after opening the context menu. */
+    // announce that the mouse button is released, as TextEdit::mouseReleaseEvent is not called when showing the menu
     QTimer::singleShot(0, textEdit, [textEdit]() { textEdit->releaseMouse(); });
 
-    /* put the cursor at the right-click position if it has no selection */
+    // put the cursor at the right-click position if it has no selection
     if (!textEdit->textCursor().hasSelection())
         textEdit->setTextCursor(textEdit->cursorForPosition(p));
 
     QMenu* menu = textEdit->createStandardContextMenu(p);
     const QList<QAction*> actions = menu->actions();
     if (!actions.isEmpty()) {
-        bool hasColumn = !textEdit->getColSel().isEmpty();
+        const bool hasColumn = !textEdit->getColSel().isEmpty();
         for (QAction* const thisAction : actions) {
-            /* remove the shortcut strings because shortcuts may change */
+            // remove the shortcut strings because shortcuts may change
             QString txt = thisAction->text();
             if (!txt.isEmpty())
                 txt = txt.split('\t').first();
             if (!txt.isEmpty())
                 thisAction->setText(txt);
-            /* correct the slots of some actions */
-            if (thisAction->objectName() == "edit-copy") {
+            // correct the slots of some actions
+            if (thisAction->objectName() == QStringLiteral("edit-copy")) {
                 disconnect(thisAction, &QAction::triggered, nullptr, nullptr);
                 connect(thisAction, &QAction::triggered, textEdit, &TextEdit::copy);
                 if (hasColumn && !thisAction->isEnabled())
                     thisAction->setEnabled(true);
             }
-            else if (thisAction->objectName() == "edit-cut") {
+            else if (thisAction->objectName() == QStringLiteral("edit-cut")) {
                 disconnect(thisAction, &QAction::triggered, nullptr, nullptr);
                 connect(thisAction, &QAction::triggered, textEdit, &TextEdit::cut);
                 if (hasColumn && !thisAction->isEnabled())
                     thisAction->setEnabled(true);
             }
-            else if (thisAction->objectName() == "edit-paste") {
+            else if (thisAction->objectName() == QStringLiteral("edit-paste")) {
                 disconnect(thisAction, &QAction::triggered, nullptr, nullptr);
                 connect(thisAction, &QAction::triggered, textEdit, &TextEdit::paste);
-                /* also, correct the enabled state of the paste action by consulting our
-                   "TextEdit::pastingIsPossible()" instead of "QPlainTextEdit::canPaste()" */
+                // correct the enabled state of paste by consulting TextEdit::pastingIsPossible
                 thisAction->setEnabled(textEdit->pastingIsPossible());
             }
-            else if (thisAction->objectName() == "edit-delete") {
+            else if (thisAction->objectName() == QStringLiteral("edit-delete")) {
                 disconnect(thisAction, &QAction::triggered, nullptr, nullptr);
                 connect(thisAction, &QAction::triggered, textEdit, &TextEdit::deleteText);
                 if (hasColumn && !thisAction->isEnabled())
                     thisAction->setEnabled(true);
             }
-            else if (thisAction->objectName() == "edit-undo") {
+            else if (thisAction->objectName() == QStringLiteral("edit-undo")) {
                 disconnect(thisAction, &QAction::triggered, nullptr, nullptr);
                 connect(thisAction, &QAction::triggered, textEdit, &TextEdit::undo);
             }
-            else if (thisAction->objectName() == "edit-redo") {
+            else if (thisAction->objectName() == QStringLiteral("edit-redo")) {
                 disconnect(thisAction, &QAction::triggered, nullptr, nullptr);
                 connect(thisAction, &QAction::triggered, textEdit, &TextEdit::redo);
             }
-            else if (thisAction->objectName() == "select-all") {
+            else if (thisAction->objectName() == QStringLiteral("select-all")) {
                 disconnect(thisAction, &QAction::triggered, nullptr, nullptr);
                 connect(thisAction, &QAction::triggered, textEdit, &TextEdit::selectAll);
             }
@@ -433,15 +440,14 @@ void TexxyWindow::editorContextMenu(const QPoint& p) {
             connect(openLink, &QAction::triggered, [str] {
                 QUrl url(str);
                 if (url.isRelative())
-                    url = QUrl::fromUserInput(str, "/");
-                /* QDesktopServices::openUrl() may resort to "xdg-open", which isn't
-                   the best choice. "gio" is always reliable, so we check it first. */
-                if (QStandardPaths::findExecutable("gio").isEmpty() ||
-                    !QProcess::startDetached("gio", QStringList() << "open" << url.toString())) {
+                    url = QUrl::fromUserInput(str, QStringLiteral("/"));
+                // prefer gio over xdg-open when available
+                if (QStandardPaths::findExecutable(QStringLiteral("gio")).isEmpty() ||
+                    !QProcess::startDetached(QStringLiteral("gio"), QStringList() << QStringLiteral("open") << url.toString())) {
                     QDesktopServices::openUrl(url);
                 }
             });
-            if (str.startsWith("mailto:"))  // see getUrl()
+            if (str.startsWith(QStringLiteral("mailto:")))  // see getUrl
                 str.remove(0, 7);
             QAction* copyLink = new QAction(tr("Copy Link"), menu);
             menu->insertAction(sep, copyLink);
@@ -486,127 +492,117 @@ void TexxyWindow::editorContextMenu(const QPoint& p) {
     menu->exec(textEdit->viewport()->mapToGlobal(p));
     delete menu;
 }
+
 void TexxyWindow::reformat(TextEdit* textEdit) {
-    formatTextRect();  // in "syntax.cpp"
+    formatTextRect();  // in syntax.cpp
     if (!textEdit->getSearchedText().isEmpty())
-        hlight();  // in "find.cpp"
+        hlight();  // in find.cpp
     textEdit->selectionHlight();
 }
+
 void TexxyWindow::zoomIn() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->zooming(1.f);
+    if (TextEdit* te = curEdit(this))
+        te->zooming(1.f);
 }
+
 void TexxyWindow::zoomOut() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        TextEdit* textEdit = tabPage->textEdit();
-        textEdit->zooming(-1.f);
-    }
+    if (TextEdit* te = curEdit(this))
+        te->zooming(-1.f);
 }
+
 void TexxyWindow::zoomZero() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        TextEdit* textEdit = tabPage->textEdit();
-        textEdit->zooming(0.f);
-    }
+    if (TextEdit* te = curEdit(this))
+        te->zooming(0.f);
 }
+
 void TexxyWindow::defaultSize() {
-    QSize s = static_cast<TexxyApplication*>(qApp)->getConfig().getStartSize();
+    const QSize s = static_cast<TexxyApplication*>(qApp)->getConfig().getStartSize();
     if (size() == s)
         return;
     if (isMaximized() || isFullScreen())
         showNormal();
-    /*if (isMaximized() && isFullScreen())
-        showMaximized();
-    if (isMaximized())
-        showNormal();*/
-    /* instead of hiding, reparent with the dummy
-       widget to guarantee resizing under all DEs */
-    /*Qt::WindowFlags flags = windowFlags();
-    setParent (dummyWidget, Qt::SubWindow);*/
-    // hide();
     resize(s);
-    /*if (parent() != nullptr)
-        setParent (nullptr, flags);*/
-    // QTimer::singleShot (0, this, &TexxyWindow::show);
 }
+
 void TexxyWindow::focusView() {
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        tabPage->textEdit()->setFocus();
+    if (TextEdit* te = curEdit(this))
+        te->setFocus();
 }
+
 void TexxyWindow::focusSidePane() {
-    if (sidePane_) {
-        QList<int> sizes = ui->splitter->sizes();
-        if (sizes.size() == 2 && sizes.at(0) == 0)  // with RTL too
-        {                                           // first, ensure its visibility (see toggleSidePane())
-            sizes.clear();
-            Config config = static_cast<TexxyApplication*>(qApp)->getConfig();
-            if (config.getRemSplitterPos()) {
-                sizes.append(std::min(std::max(16, config.getSplitterPos()), size().width() / 2));
-                sizes.append(100);
-            }
-            else {
-                int s = std::min(size().width() / 5, 40 * sidePane_->fontMetrics().horizontalAdvance(' '));
-                sizes << s << size().width() - s;
-            }
-            ui->splitter->setSizes(sizes);
+    if (!sidePane_)
+        return;
+
+    QList<int> sizes = ui->splitter->sizes();
+    if (sizes.size() == 2 && sizes.at(0) == 0) {  // with RTL too
+        // first, ensure its visibility
+        sizes.clear();
+        const auto& config = static_cast<TexxyApplication*>(qApp)->getConfig();
+        if (config.getRemSplitterPos()) {
+            sizes.append(std::min(std::max(16, config.getSplitterPos()), size().width() / 2));
+            sizes.append(100);
+        } else {
+            const int s = std::min(size().width() / 5, 40 * sidePane_->fontMetrics().horizontalAdvance(' '));
+            sizes << s << size().width() - s;
         }
-        sidePane_->listWidget()->setFocus();
+        ui->splitter->setSizes(sizes);
     }
+    sidePane_->listWidget()->setFocus();
 }
+
 void TexxyWindow::showHideSearch() {
     if (!isReady())
         return;
 
-    TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
-    if (tabPage == nullptr)
+    TabPage* tabPage = curTab(this);
+    if (!tabPage)
         return;
 
-    bool isFocused = tabPage->isSearchBarVisible() && tabPage->searchBarHasFocus();
+    const bool isFocused = tabPage->isSearchBarVisible() && tabPage->searchBarHasFocus();
 
     if (!isFocused)
         tabPage->focusSearchBar();
     else {
         ui->dockReplace->setVisible(false);  // searchbar is needed by replace dock
-        /* return focus to the document,... */
+        // return focus to the document
         tabPage->textEdit()->setFocus();
     }
 
-    int count = ui->tabWidget->count();
-    for (int indx = 0; indx < count; ++indx) {
-        TabPage* page = qobject_cast<TabPage*>(ui->tabWidget->widget(indx));
+    const int count = ui->tabWidget->count();
+    for (int i = 0; i < count; ++i) {
+        TabPage* page = qobject_cast<TabPage*>(ui->tabWidget->widget(i));
         if (isFocused) {
-            /* ... remove all yellow and green highlights... */
-            TextEdit* textEdit = page->textEdit();
-            textEdit->setSearchedText(QString());
+            // remove all yellow and green highlights
+            TextEdit* te = page->textEdit();
+            te->setSearchedText(QString());
             QList<QTextEdit::ExtraSelection> emptySelections;
-            textEdit->setGreenSel(emptySelections);  // not needed
-            textEdit->setExtraSelections(composeSelections(textEdit, emptySelections));
-            /* ... and empty all search entries */
+            te->setGreenSel(emptySelections);
+            te->setExtraSelections(composeSelections(te, emptySelections));
+            // empty all search entries
             page->clearSearchEntry();
         }
         page->setSearchBarVisible(!isFocused);
     }
 }
+
 void TexxyWindow::jumpTo() {
     if (!isReady())
         return;
 
-    bool visibility = ui->spinBox->isVisible();
+    const bool visibility = ui->spinBox->isVisible();
 
     for (int i = 0; i < ui->tabWidget->count(); ++i) {
-        TextEdit* thisTextEdit = qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit();
+        TextEdit* te = qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit();
         if (!ui->actionLineNumbers->isChecked())
-            thisTextEdit->showLineNumbers(!visibility);
+            te->showLineNumbers(!visibility);
 
-        if (!visibility) {
-            /* setMaximum() isn't a slot */
-            connect(thisTextEdit->document(), &QTextDocument::blockCountChanged, this, &TexxyWindow::setMax);
-        }
+        if (!visibility)
+            connect(te->document(), &QTextDocument::blockCountChanged, this, &TexxyWindow::setMax);
         else
-            disconnect(thisTextEdit->document(), &QTextDocument::blockCountChanged, this, &TexxyWindow::setMax);
+            disconnect(te->document(), &QTextDocument::blockCountChanged, this, &TexxyWindow::setMax);
     }
 
-    TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
-    if (tabPage) {
+    if (TabPage* tabPage = curTab(this)) {
         if (!visibility && ui->tabWidget->count() > 0)
             ui->spinBox->setMaximum(tabPage->textEdit()->document()->blockCount());
     }
@@ -616,33 +612,34 @@ void TexxyWindow::jumpTo() {
     if (!visibility) {
         ui->spinBox->setFocus();
         ui->spinBox->selectAll();
+    } else if (TabPage* tp = curTab(this)) {
+        tp->textEdit()->setFocus();
     }
-    else if (tabPage) /* return focus to doc */
-        tabPage->textEdit()->setFocus();
 }
+
 void TexxyWindow::setMax(const int max) {
     ui->spinBox->setMaximum(max);
 }
+
 void TexxyWindow::goTo() {
-    /* workaround for not being able to use returnPressed()
-       because of protectedness of spinbox's QLineEdit */
+    // workaround for not being able to use returnPressed because of protectedness of spinbox's QLineEdit
     if (!ui->spinBox->hasFocus())
         return;
 
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-        TextEdit* textEdit = tabPage->textEdit();
-        QTextBlock block = textEdit->document()->findBlockByNumber(ui->spinBox->value() - 1);
-        int pos = block.position();
-        QTextCursor start = textEdit->textCursor();
+    if (TextEdit* te = curEdit(this)) {
+        QTextBlock block = te->document()->findBlockByNumber(ui->spinBox->value() - 1);
+        const int pos = block.position();
+        QTextCursor start = te->textCursor();
         if (ui->checkBox->isChecked())
             start.setPosition(pos, QTextCursor::KeepAnchor);
         else
             start.setPosition(pos);
-        textEdit->setTextCursor(start);
+        te->setTextCursor(start);
     }
 }
+
 void TexxyWindow::showLN(bool checked) {
-    int count = ui->tabWidget->count();
+    const int count = ui->tabWidget->count();
     if (count == 0)
         return;
 
@@ -650,28 +647,29 @@ void TexxyWindow::showLN(bool checked) {
         for (int i = 0; i < count; ++i)
             qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit()->showLineNumbers(true);
     }
-    else if (!ui->spinBox->isVisible())  // also the spinBox affects line numbers visibility
-    {
+    else if (!ui->spinBox->isVisible()) {
         for (int i = 0; i < count; ++i)
             qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit()->showLineNumbers(false);
     }
 }
+
 void TexxyWindow::toggleWrapping() {
-    int count = ui->tabWidget->count();
+    const int count = ui->tabWidget->count();
     if (count == 0)
         return;
 
-    bool wrapLines = ui->actionWrap->isChecked();
+    const bool wrapLines = ui->actionWrap->isChecked();
     for (int i = 0; i < count; ++i) {
-        auto textEdit = qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit();
-        textEdit->setLineWrapMode(wrapLines ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap);
-        textEdit->removeColumnHighlight();
+        auto te = qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit();
+        te->setLineWrapMode(wrapLines ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap);
+        te->removeColumnHighlight();
     }
-    if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget()))
-        reformat(tabPage->textEdit());
+    if (TextEdit* te = curEdit(this))
+        reformat(te);
 }
+
 void TexxyWindow::toggleIndent() {
-    int count = ui->tabWidget->count();
+    const int count = ui->tabWidget->count();
     if (count == 0)
         return;
 
@@ -684,6 +682,7 @@ void TexxyWindow::toggleIndent() {
             qobject_cast<TabPage*>(ui->tabWidget->widget(i))->textEdit()->setAutoIndentation(false);
     }
 }
+
 void TexxyWindow::stealFocus(QWidget* w) {
     if (w->isMinimized())
         w->setWindowState((w->windowState() & ~Qt::WindowMinimized) | Qt::WindowActive);
@@ -695,9 +694,8 @@ void TexxyWindow::stealFocus(QWidget* w) {
 #endif
 
     raise();
-    /* WARNING: Under Wayland, this warning is shown by qtwayland -> qwaylandwindow.cpp
-                -> QWaylandWindow::requestActivateWindow():
-                "Wayland does not support QWindow::requestActivate()" */
+    // WARNING: Under Wayland, this warning is shown by qtwayland -> qwaylandwindow.cpp
+    //          -> QWaylandWindow::requestActivateWindow(): Wayland does not support QWindow::requestActivate
     if (!static_cast<TexxyApplication*>(qApp)->isWayland()) {
         w->activateWindow();
         QTimer::singleShot(0, w, [w]() {
@@ -706,13 +704,13 @@ void TexxyWindow::stealFocus(QWidget* w) {
         });
     }
     else if (!w->isActiveWindow()) {
-        /* This is the only way to demand attention under Wayland,
-           although Wayland WMs may ignore it. */
+        // demand attention under Wayland, WMs may ignore it
         QApplication::alert(w);
     }
 }
+
 void TexxyWindow::stealFocus() {
-    /* if there is a (sessions) dialog, let it keep the focus */
+    // if there is a dialog, let it keep the focus
     const auto dialogs = findChildren<QDialog*>();
     if (!dialogs.isEmpty()) {
         stealFocus(dialogs.at(0));
