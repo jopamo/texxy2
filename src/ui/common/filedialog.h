@@ -1,7 +1,4 @@
 // src/ui/common/filedialog.h
-/*
-  texxy/filedialog.h
-*/
 
 #ifndef FILEDIALOG_H
 #define FILEDIALOG_H
@@ -11,6 +8,10 @@
 #include <QShortcut>
 #include <QTimer>
 #include <QTreeView>
+#include <QAbstractItemModel>
+#include <QAbstractItemView>
+#include <QShowEvent>
+#include <QDir>
 
 namespace Texxy {
 
@@ -55,7 +56,6 @@ class FileDialog : public QFileDialog {
     void scrollToSelection() {
         if (!tView || !tView->selectionModel())
             return;
-        // prefer selectedRows so we only get one index per row
         const auto rows = tView->selectionModel()->selectedRows();
         if (!rows.isEmpty())
             tView->scrollTo(rows.first(), QAbstractItemView::PositionAtCenter);
