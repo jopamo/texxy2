@@ -1,11 +1,10 @@
 // src/platform/singleton.cpp
-/*
- singleton.cpp
-*/
 
 #include "singleton.h"
 #include "texxyadaptor.h"
 
+#include <QApplication>
+#include <QWidget>
 #include <QDir>
 #include <QGuiApplication>
 #include <QScreen>
@@ -16,6 +15,11 @@
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusMessage>
+#include <QStandardItemModel>
+#include <QStringView>
+#include <QStringList>
+#include <QVariant>
+#include <QLatin1StringView>
 
 #include <cstdio>
 #include <utility>
