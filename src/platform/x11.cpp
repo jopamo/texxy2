@@ -17,9 +17,13 @@ namespace Texxy {
 
 static inline Display* getDisplay() {
 #if QT_CONFIG(xcb)
-    // avoid calling nativeInterface via qApp (typed as QCoreApplication*)
-    if (auto* iface = QNativeInterface::QX11Application::instance())
-        return iface->display();
+    // fetch native X11 interface from a QGuiApplication instance
+    if (auto* core = QCoreApplication::instance()) {
+        if (auto* gui = qobject_cast<QGuiApplication*>(core)) {
+            if (auto* iface = gui->nativeInterface<QNativeInterface::QX11Application>())
+                return iface->display();
+        }
+    }
 #endif
     return nullptr;
 }
