@@ -1,12 +1,11 @@
 // src/platform/window_utils.cpp
-/*
- * window_utils.cpp
- */
 
 #include "texxywindow.h"
 
 #include "ui/tabpage.h"
 #include "ui_texxywindow.h"
+#include <QList>
+#include <QTextEdit>
 
 namespace Texxy {
 
@@ -15,7 +14,7 @@ namespace Texxy {
 }
 
 [[nodiscard]] TextEdit* TexxyWindow::currentTextEdit() const {
-    if (const auto* tabPage = currentTabPage())
+    if (auto* tabPage = currentTabPage())
         return tabPage->textEdit();
     return nullptr;
 }
@@ -44,8 +43,8 @@ namespace Texxy {
     return ui->actionLineNumbers->isChecked() || ui->spinBox->isVisible();
 }
 
-QList<QTextEdit::ExtraSelection> TexxyWindow::composeSelections(TextEdit* textEdit,
-                                                                const QList<QTextEdit::ExtraSelection>& primary) const {
+QList<QTextEdit::ExtraSelection> TexxyWindow::composeSelections(
+    TextEdit* textEdit, const QList<QTextEdit::ExtraSelection>& primary) const {
     // bind as const refs to avoid copies if getters return references
     const auto& blueSel = textEdit->getBlueSel();
     const auto& colSel = textEdit->getColSel();
@@ -53,8 +52,8 @@ QList<QTextEdit::ExtraSelection> TexxyWindow::composeSelections(TextEdit* textEd
     const bool includeLineContext = lineContextVisible();
 
     QList<QTextEdit::ExtraSelection> composed;
-    const int extra = static_cast<int>(primary.size() + blueSel.size() + colSel.size() + redSel.size());
-    composed.reserve(extra + (includeLineContext ? 1 : 0));
+    const int baseCount = static_cast<int>(primary.size() + blueSel.size() + colSel.size() + redSel.size());
+    composed.reserve(baseCount + (includeLineContext ? 1 : 0));
 
     if (includeLineContext)
         composed.append(textEdit->currentLineSelection());
