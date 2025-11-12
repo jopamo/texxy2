@@ -8,8 +8,19 @@
 
 #include "session.h"
 #include "ui_sessionDialog.h"
+
+#include <QAbstractItemDelegate>
+#include <QAbstractScrollArea>
 #include <QFileInfo>
+#include <QItemSelectionModel>
+#include <QKeyEvent>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QMenu>
+#include <QRegularExpression>
 #include <QScopeGuard>
+#include <QSettings>
+#include <QTimer>
 
 namespace Texxy {
 
@@ -17,11 +28,11 @@ namespace Texxy {
 SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::SessionDialog) {
     ui->setupUi(this);
     parent_ = parent;
-    setObjectName("sessionDialog");
+    setObjectName(QStringLiteral("sessionDialog"));
 
     // style prompt banner
     ui->promptLabel->setStyleSheet(
-        "QLabel {background-color: #7d0000; color: white; border-radius: 3px; margin: 2px; padding: 5px;}");
+        QStringLiteral("QLabel {background-color: #7d0000; color: white; border-radius: 3px; margin: 2px; padding: 5px;}"));
 
     // list widget setup
     ui->listWidget->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
@@ -34,8 +45,8 @@ SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::Sess
 
     // populate existing session names
     {
-        QSettings settings("texxy", "texxy");
-        settings.beginGroup("sessions");
+        QSettings settings(QStringLiteral("texxy"), QStringLiteral("texxy"));
+        settings.beginGroup(QStringLiteral("sessions"));
         allItems_ = settings.allKeys();
         settings.endGroup();
     }
@@ -68,16 +79,17 @@ SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::Sess
 
     connect(ui->saveBtn, &QAbstractButton::clicked, this, &SessionDialog::saveSession);
     connect(ui->lineEdit, &QLineEdit::returnPressed, this, &SessionDialog::saveSession);
-    connect(ui->lineEdit, &LineEdit::receivedFocus, [=] { ui->openBtn->setDefault(false); });
-    connect(ui->lineEdit, &QLineEdit::textEdited,
-            [=](const QString& text) { ui->saveBtn->setEnabled(!text.isEmpty()); });
+    connect(ui->lineEdit, &LineEdit::receivedFocus, [this] { ui->openBtn->setDefault(false); });
+    connect(ui->lineEdit, &QLineEdit::textEdited, [this](const QString& text) {
+        ui->saveBtn->setEnabled(!text.isEmpty());
+    });
 
     connect(ui->openBtn, &QAbstractButton::clicked, this, &SessionDialog::openSessions);
     connect(ui->actionOpen, &QAction::triggered, this, &SessionDialog::openSessions);
 
-    connect(ui->clearBtn, &QAbstractButton::clicked, [=] { showPrompt(CLEAR); });
-    connect(ui->removeBtn, &QAbstractButton::clicked, [=] { showPrompt(REMOVE); });
-    connect(ui->actionRemove, &QAction::triggered, [=] { showPrompt(REMOVE); });
+    connect(ui->clearBtn, &QAbstractButton::clicked, [this] { showPrompt(CLEAR); });
+    connect(ui->removeBtn, &QAbstractButton::clicked, [this] { showPrompt(REMOVE); });
+    connect(ui->actionRemove, &QAction::triggered, [this] { showPrompt(REMOVE); });
 
     connect(ui->actionRename, &QAction::triggered, this, &SessionDialog::renameSession);
 
@@ -93,11 +105,15 @@ SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::Sess
     for (QWidget* w : widgets) {
         const QString tip = w->toolTip();
         if (!tip.isEmpty())
-            w->setToolTip("<p style='white-space:pre'>" + tip + "</p>");
+            w->setToolTip(QStringLiteral("<p style='white-space:pre'>") + tip + QStringLiteral("</p>"));
     }
 
     // initial size proportional to parent
-    resize(QSize(parent_->size().width() / 2, 3 * parent_->size().height() / 4));
+    if (parent_) {
+        resize(QSize(parent_->size().width() / 2, 3 * parent_->size().height() / 4));
+    } else {
+        resize(QSize(800, 600));
+    }
 }
 
 SessionDialog::~SessionDialog() {
@@ -225,8 +241,8 @@ void SessionDialog::reallySaveSession() {
 
     onEmptinessChanged(false);
 
-    QSettings settings("texxy", "texxy");
-    settings.beginGroup("sessions");
+    QSettings settings(QStringLiteral("texxy"), QStringLiteral("texxy"));
+    settings.beginGroup(QStringLiteral("sessions"));
     settings.setValue(name, files);
     settings.endGroup();
 }
@@ -241,8 +257,8 @@ void SessionDialog::openSessions() {
     files.reserve(count * 4);  // rough guess to minimize reallocs
 
     {
-        QSettings settings("texxy", "texxy");
-        settings.beginGroup("sessions");
+        QSettings settings(QStringLiteral("texxy"), QStringLiteral("texxy"));
+        settings.beginGroup(QStringLiteral("sessions"));
         for (int i = 0; i < count; ++i)
             files += settings.value(items.at(i)->text()).toStringList();
         settings.endGroup();
@@ -304,7 +320,7 @@ void SessionDialog::showPrompt(const QString& message) {
 
     ui->confirmBtn->setText(tr("&OK"));
     ui->cancelBtn->setVisible(false);
-    ui->promptLabel->setText("<b>" + message + "</b>");
+    ui->promptLabel->setText(QStringLiteral("<b>") + message + QStringLiteral("</b>"));
 }
 
 void SessionDialog::showPrompt(PROMPT prompt) {
@@ -319,19 +335,18 @@ void SessionDialog::showPrompt(PROMPT prompt) {
     ui->cancelBtn->setVisible(true);
 
     if (prompt == CLEAR) {
-        ui->promptLabel->setText("<b>" + tr("Do you really want to remove all saved sessions?") + "</b>");
+        ui->promptLabel->setText(QStringLiteral("<b>") + tr("Do you really want to remove all saved sessions?") + QStringLiteral("</b>"));
         connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::removeAll);
     }
     else if (prompt == REMOVE) {
         if (ui->listWidget->selectedItems().count() > 1)
-            ui->promptLabel->setText("<b>" + tr("Do you really want to remove the selected sessions?") + "</b>");
+            ui->promptLabel->setText(QStringLiteral("<b>") + tr("Do you really want to remove the selected sessions?") + QStringLiteral("</b>"));
         else
-            ui->promptLabel->setText("<b>" + tr("Do you really want to remove the selected session?") + "</b>");
+            ui->promptLabel->setText(QStringLiteral("<b>") + tr("Do you really want to remove the selected session?") + QStringLiteral("</b>"));
         connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::removeSelected);
     }
     else {  // NAME or RENAME
-        ui->promptLabel->setText("<b>" + tr("A session with the same name exists.<br>Do you want to overwrite it?") +
-                                 "</b>");
+        ui->promptLabel->setText(QStringLiteral("<b>") + tr("A session with the same name exists.<br>Do you want to overwrite it?") + QStringLiteral("</b>"));
         if (prompt == NAME)
             connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::reallySaveSession);
         else
@@ -352,8 +367,8 @@ void SessionDialog::removeSelected() {
 
     Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
 
-    QSettings settings("texxy", "texxy");
-    settings.beginGroup("sessions");
+    QSettings settings(QStringLiteral("texxy"), QStringLiteral("texxy"));
+    settings.beginGroup(QStringLiteral("sessions"));
 
     for (int i = 0; i < count; ++i) {
         const QString key = items.at(i)->text();
@@ -371,8 +386,8 @@ void SessionDialog::removeSelected() {
     settings.endGroup();
 
     if (config.savedCursorPos().isEmpty()) {
-        Settings curSettings("texxy", "texxy_cursor_pos");
-        curSettings.remove("cursorPositions");
+        Settings curSettings(QStringLiteral("texxy"), QStringLiteral("texxy_cursor_pos"));
+        curSettings.remove(QStringLiteral("cursorPositions"));
     }
 
     if (allItems_.isEmpty())
@@ -384,23 +399,22 @@ void SessionDialog::removeAll() {
     Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
     config.removeAllCursorPos();
     {
-        Settings curSettings("texxy", "texxy_cursor_pos");
-        curSettings.remove("cursorPositions");
+        Settings curSettings(QStringLiteral("texxy"), QStringLiteral("texxy_cursor_pos"));
+        curSettings.remove(QStringLiteral("cursorPositions"));
     }
 
     ui->listWidget->clear();
     onEmptinessChanged(true);
 
-    QSettings settings("texxy", "texxy");
-    settings.beginGroup("sessions");
-    settings.remove("");  // remove the whole group
+    QSettings settings(QStringLiteral("texxy"), QStringLiteral("texxy"));
+    settings.beginGroup(QStringLiteral("sessions"));
+    settings.remove(QString());  // remove the whole group
     settings.endGroup();
 }
 
 void SessionDialog::selectionChanged() {
     const bool noSel = ui->listWidget->selectedItems().isEmpty();
     ui->openBtn->setEnabled(!noSel);
-    ui->removeBtn->setEnabled(!noSel);
     // enable Enter to open when list has focus
     ui->openBtn->setDefault(true);
 }
@@ -444,8 +458,8 @@ void SessionDialog::reallyRenameSession() {
         return;
     }
 
-    QSettings settings("texxy", "texxy");
-    settings.beginGroup("sessions");
+    QSettings settings(QStringLiteral("texxy"), QStringLiteral("texxy"));
+    settings.beginGroup(QStringLiteral("sessions"));
 
     const QStringList files = settings.value(rename_.oldName).toStringList();
     settings.remove(rename_.oldName);
