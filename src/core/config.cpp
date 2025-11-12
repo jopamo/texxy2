@@ -98,7 +98,7 @@ Config::Config()
       cursorPosRetrieved_(false),
       whiteSpaceValue_(180),
       curLineHighlight_(-1){
-          font_.setStyleHint(QFont::Monospace)  // prefer a fixed-pitch font
+          font_.setStyleHint(QFont::Monospace);
       }
 
       Config::~Config() {}
