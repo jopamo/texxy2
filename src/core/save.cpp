@@ -1,9 +1,8 @@
-// src/core/save.cpp
 /*
- * texxy/save.cpp
+ * src/core/save.cpp
  *
  * Saving-related functionality extracted from the legacy monolithic
- * implementation to keep `texxy.cpp` focused on window wiring.
+ * implementation to keep `texxy.cpp` focused on window wiring
  */
 
 #include "texxywindow.h"
@@ -25,6 +24,7 @@
 #include <QListWidgetItem>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QSaveFile>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -50,14 +50,12 @@ int trailingSpaces(const QString& str) {
 }
 
 QStringEncoder getEncoder(const QString& encoding) {
-    if (encoding.compare("UTF-16", Qt::CaseInsensitive) == 0) {
+    if (encoding.compare("UTF-16", Qt::CaseInsensitive) == 0)
         return QStringEncoder(QStringConverter::Utf16, QStringConverter::Flag::WriteBom);
-    }
     if (encoding.compare("UTF-8", Qt::CaseInsensitive) == 0)
         return QStringEncoder(QStringConverter::Utf8);
     if (encoding.compare("UTF-32", Qt::CaseInsensitive) == 0)
-        return QStringEncoder(QStringConverter::Utf32);
-
+        return QStringEncoder(QStringConverter::Utf32, QStringConverter::Flag::WriteBom);
     return QStringEncoder(QStringConverter::Latin1);
 }
 
@@ -151,13 +149,13 @@ bool TexxyWindow::writeUtf16File(const QString& fname, TextEdit* textEdit) {
 
     const QByteArray bytes = encoder.encode(contents);
 
-    QFile file(fname);
+    QSaveFile file(fname);
     if (!file.open(QIODevice::WriteOnly))
         return false;
     const qint64 written = file.write(bytes);
-    file.flush();
-    file.close();
-    return written == bytes.size();
+    if (written != bytes.size())
+        return false;
+    return file.commit();
 }
 
 bool TexxyWindow::promptAndWriteWithChosenEOL(const QString& fname,
@@ -198,13 +196,13 @@ bool TexxyWindow::promptAndWriteWithChosenEOL(const QString& fname,
 
     const QByteArray bytes = encoder.encode(contents);
 
-    QFile file(fname);
+    QSaveFile file(fname);
     if (!file.open(QIODevice::WriteOnly))
         return false;
     const qint64 written = file.write(bytes);
-    file.flush();
-    file.close();
-    return written == bytes.size();
+    if (written != bytes.size())
+        return false;
+    return file.commit();
 }
 
 void TexxyWindow::handleSaveFailure(const QString& fname) {
@@ -321,12 +319,12 @@ bool TexxyWindow::saveFile(bool keepSyntax,
     }
     else {
         encodingToCheck(QStringLiteral("UTF-8"));
-        QFile file(fname);
+        QSaveFile file(fname);
         if (file.open(QIODevice::WriteOnly)) {
             QTextDocumentWriter writer(&file, "plaintext");
             success = writer.write(textEdit->document());
-            file.flush();
-            file.close();
+            if (success)
+                success = file.commit();
         }
     }
 
@@ -464,8 +462,14 @@ void TexxyWindow::saveAllFiles(bool showWarning) {
             c.endEditBlock();
         }
 
-        QTextDocumentWriter writer(fname, "plaintext");
-        const bool saved = writer.write(doc);
+        QSaveFile file(fname);
+        bool saved = false;
+        if (file.open(QIODevice::WriteOnly)) {
+            QTextDocumentWriter writer(&file, "plaintext");
+            saved = writer.write(doc);
+            if (saved)
+                saved = file.commit();
+        }
 
         if (saved) {
             inactiveTabModified_ = (i != currentIndex);
