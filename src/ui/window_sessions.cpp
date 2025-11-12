@@ -13,7 +13,7 @@ void TexxyWindow::executeProcess() {
     }
     closeWarningBar();
 
-    const auto* app = static_cast<TexxyApplication*>(qApp);
+    auto* app = static_cast<TexxyApplication*>(qApp); // non-const so we can call non-const getConfig
     const Config config = app->getConfig();
     if (!config.getExecuteScripts())
         return;
@@ -48,14 +48,13 @@ void TexxyWindow::executeProcess() {
 
     // build command line from config, supporting optional %f placeholder
     QString command = config.getExecuteCommand();
-    QStringList args;
     if (!command.isEmpty()) {
         QStringList parts = QProcess::splitCommand(command);
         if (!parts.isEmpty()) {
             QString prog = parts.takeFirst();
-            // if user provided %f anywhere, replace it, otherwise append file name at the end
             for (QString& p : parts)
                 p.replace("%f", fName);
+
             bool hadPlaceholder = false;
             for (const QString& p : parts)
                 if (p.contains(fName))
@@ -109,7 +108,7 @@ void TexxyWindow::manageSessions() {
     // otherwise create a non modal Sessions dialog
     auto* dlg = new SessionDialog(this);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
-    dlg->setObjectName("sessionDialog"); // ensure future lookups work
+    dlg->setObjectName("sessionDialog");
     dlg->show();
     dlg->raise();
     dlg->activateWindow();
