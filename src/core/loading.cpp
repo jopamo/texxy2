@@ -1,4 +1,7 @@
 // src/core/loading.cpp
+/*
+  texxy/loading.cpp
+*/
 
 #include "loading.h"
 #include "encoding.h"
@@ -76,47 +79,39 @@ static inline ScanResult scanBuffer(const uchar* begin, const uchar* end, bool e
     const int thresholdText = 500000;
     const int thresholdWide = 500004;  // multiple of 4
     int lineLen = 0;
-    const bool wideish = enforced || r.likelyUtf16 || r.likelyUtf32;
-    const int threshold = wideish ? thresholdWide : thresholdText;
+    const int threshold = (enforced || r.likelyUtf16 || r.likelyUtf32) ? thresholdWide : thresholdText;
+
+    // if we already peeked into the first bytes, seed line length
+    lineLen = peeks;
 
     // include the peeked bytes in cutoff consideration
-    for (int i = 0; i < peeks; ++i) {
+    for (qint64 i = 0; i < peeks; ++i) {
         const char c = static_cast<char>(C[i]);
         if (c == '\n' || c == '\r')
             lineLen = 0;
-        else
-            ++lineLen;
-        if (lineLen > threshold && r.cutoff < 0) {
-            // cutoff occurs before this byte
-            r.cutoff = i;
-            break;
-        }
+        if (lineLen > threshold && r.cutoff < 0)
+            r.cutoff = i;  // cutoff occurs right before this byte
     }
 
     // continue scanning from after the peek
-    if (r.cutoff < 0) {
-        for (const uchar* p = begin + peeks; p < end; ++p) {
-            const char c = static_cast<char>(*p);
-            r.hasNull |= (c == '\0');
-            if (c == '\n' || c == '\r')
-                lineLen = 0;
-            else
-                ++lineLen;
+    for (const uchar* p = begin + peeks; p < end; ++p) {
+        const char c = static_cast<char>(*p);
+        r.hasNull |= (c == '\0');
+        if (c == '\n' || c == '\r')
+            lineLen = 0;
+        ++lineLen;
 
-            if (lineLen > threshold) {
-                // cutoff index is number of bytes to keep from start
-                qint64 keep = p - begin;
-                if (wideish)  // avoid splitting code units
-                    keep = (keep / 4) * 4;
-                r.cutoff = keep;
-                break;
-            }
+        if (lineLen > threshold && r.cutoff < 0) {
+            // cutoff index is number of bytes to keep from start
+            r.cutoff = p - begin - (enforced || r.likelyUtf16 || r.likelyUtf32 ? ((lineLen - threshold) % 4) : 0);
+            break;  // first cutoff position is enough
         }
     }
 
     return r;
 }
 
+// ctor definition to match header and resolve undefined reference
 Loading::Loading(const QString& fname,
                  const QString& charset,
                  bool reload,
@@ -133,8 +128,6 @@ Loading::Loading(const QString& fname,
       multiple_(multiple),
       skipNonText_(true) {}
 
-Loading::~Loading() {}
-
 void Loading::run() {
     if (!QFile::exists(fname_)) {
         emit completed(QString(), fname_, charset_.isEmpty() ? "UTF-8" : charset_, false, false, 0, 0, false,
@@ -143,9 +136,7 @@ void Loading::run() {
     }
 
     QFile file(fname_);
-
-    // refuse overly large files as before
-    constexpr qint64 sizeLimit = 100LL * 1024 * 1024;
+    const qint64 sizeLimit = 100LL * 1024 * 1024;
     if (file.size() > sizeLimit) {
         emit completed(QString(), fname_);
         return;
@@ -156,25 +147,31 @@ void Loading::run() {
     }
 
     const qint64 fsz = file.size();
-    const uchar* map = fsz ? file.map(0, fsz) : nullptr;
 
-    // RAII guard to unmap when leaving scope
-    struct Unmapper {
-        QFile* f = nullptr;
-        const uchar* p = nullptr;
-        ~Unmapper() { if (f && p) f->unmap(p); }
-    } unmap{&file, map};
+    // keep the mmap pointer writable for QFile::unmap, but expose a const view for scanning/decoding
+    uchar* mapped = fsz ? file.map(0, fsz) : nullptr;
 
     QByteArray fallback;
-    if (!map) {
-        // fall back to a single read into a non-owning QByteArray view to avoid per-byte appends
+    const uchar* begin = nullptr;
+    qint64 dataLen = 0;
+
+    if (mapped) {
+        begin = mapped;
+        dataLen = fsz;
+    } else {
         fallback = file.readAll();
-        map = reinterpret_cast<const uchar*>(fallback.constData());
-        unmap.p = nullptr;  // nothing to unmap when using fallback buffer
+        begin = reinterpret_cast<const uchar*>(fallback.constData());
+        dataLen = fallback.size();
     }
 
-    const uchar* const begin = map;
-    const uchar* const end = map + (map ? (fallback.isEmpty() ? fsz : fallback.size()) : 0);
+    const uchar* const end = begin + dataLen;
+
+    // RAII unmap only when we actually mapped
+    struct Unmapper {
+        QFile* f = nullptr;
+        uchar* p = nullptr;
+        ~Unmapper() { if (f && p) f->unmap(p); }
+    } un{&file, mapped};
 
     const bool enforced = !charset_.isEmpty();
 
@@ -194,11 +191,14 @@ void Loading::run() {
             // treat as non-text but still open as UTF-8 like original
             forceUneditable_ = true;
             charset_ = "UTF-8";
-        } else if (scan.likelyUtf16) {
+        }
+        else if (scan.likelyUtf16) {
             charset_ = "UTF-16";
-        } else if (scan.likelyUtf32) {
+        }
+        else if (scan.likelyUtf32) {
             charset_ = "UTF-32";
-        } else {
+        }
+        else {
             // zero-copy view into mapped data for detection to avoid copying the whole file
             const QByteArray raw =
                 QByteArray::fromRawData(reinterpret_cast<const char*>(begin), static_cast<int>(end - begin));
@@ -214,11 +214,10 @@ void Loading::run() {
 
     QStringDecoder decoder(conv);
 
-    // stream decode directly from mapped memory to avoid building a second full-size buffer
+    // stream decode directly from data view to avoid building a second full-size buffer
     // if we need to truncate a huge line, decode only up to cutoff and then append the notice
     QString text;
-    if (fsz > 0)
-        text.reserve(static_cast<int>(qMin<qint64>(fsz, 1'500'000)));  // rough reservation to reduce reallocs
+    text.reserve(static_cast<int>(qMin<qint64>(fsz, 1'500'000)));  // rough reservation to reduce reallocs
 
     const qint64 keepLen = scan.cutoff >= 0 ? scan.cutoff : (end - begin);
     if (keepLen > 0) {
@@ -234,24 +233,6 @@ void Loading::run() {
 
     // finalize the decoder state
     text += decoder.decode({});  // flush any pending partial sequence
-
-    // if decoder failed and charset was not enforced, retry once as Latin1
-    if (decoder.hasError() && !enforced) {
-        QStringDecoder latin(QStringConverter::Latin1);
-        text.clear();
-        if (keepLen > 0) {
-            constexpr qint64 CHUNK = 1 << 20;
-            qint64 processed = 0;
-            while (processed < keepLen) {
-                const qint64 n = qMin(CHUNK, keepLen - processed);
-                const auto view = QByteArrayView(reinterpret_cast<const char*>(begin + processed), static_cast<int>(n));
-                text += latin.decode(view);
-                processed += n;
-            }
-        }
-        text += latin.decode({});
-        charset_ = "ISO-8859-1";
-    }
 
     if (scan.cutoff >= 0) {
         appendHugeLineNotice(text);
