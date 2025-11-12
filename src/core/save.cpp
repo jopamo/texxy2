@@ -15,6 +15,7 @@
 #include "textedit/textedit.h"
 
 #include <QApplication>
+#include <QBuffer>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -319,12 +320,27 @@ bool TexxyWindow::saveFile(bool keepSyntax,
     }
     else {
         encodingToCheck(QStringLiteral("UTF-8"));
-        QSaveFile file(fname);
-        if (file.open(QIODevice::WriteOnly)) {
-            QTextDocumentWriter writer(&file, "plaintext");
+
+        QByteArray serialized;
+        QBuffer buffer(&serialized);
+        success = buffer.open(QIODevice::WriteOnly);
+        if (success) {
+            // Write via QBuffer so QTextDocumentWriter never closes the QSaveFile directly
+            QTextDocumentWriter writer(&buffer, "plaintext");
             success = writer.write(textEdit->document());
-            if (success)
-                success = file.commit();
+            buffer.close();
+        }
+
+        if (success) {
+            QSaveFile file(fname);
+            if (file.open(QIODevice::WriteOnly)) {
+                success = (file.write(serialized) == serialized.size());
+                if (success)
+                    success = file.commit();
+            }
+            else {
+                success = false;
+            }
         }
     }
 
