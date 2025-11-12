@@ -4,23 +4,25 @@
 #define LOADING_H
 
 #include <QThread>
+#include <QString>
 
 namespace Texxy {
 
 class Loading : public QThread {
     Q_OBJECT
+    Q_DISABLE_COPY_MOVE(Loading)
 
    public:
-    Loading(const QString& fname,
-            const QString& charset,
-            bool reload,
-            int restoreCursor,
-            int posInLine,
-            bool forceUneditable,
-            bool multiple);
-    ~Loading();
+    explicit Loading(const QString& fname,
+                     const QString& charset,
+                     bool reload,
+                     int restoreCursor,
+                     int posInLine,
+                     bool forceUneditable,
+                     bool multiple);
+    ~Loading() override = default;
 
-    void setSkipNonText(bool skip) { skipNonText_ = skip; }
+    void setSkipNonText(bool skip) noexcept { skipNonText_ = skip; }
 
    signals:
     void completed(const QString& text = QString(),
@@ -33,17 +35,18 @@ class Loading : public QThread {
                    bool uneditable = false,
                    bool multiple = false);
 
-   private:
-    void run();
+   protected:
+    void run() final override;
 
+   private:
     QString fname_;
     QString charset_;
-    bool reload_;           // Is this a reloading? (Only passed.)
-    int restoreCursor_;     // (How) should the cursor position be restored? (Only passed.)
-    int posInLine_;         // The cursor position in line (if relevant).
-    bool forceUneditable_;  // Should the doc be always uneditable? (Only passed.)
-    bool multiple_;         // Are there multiple files to load? (Only passed.)
-    bool skipNonText_;      // Should non-text files be skipped?
+    bool reload_;           // is this a reload
+    int restoreCursor_;     // how the cursor position should be restored
+    int posInLine_;         // cursor position in line if relevant
+    bool forceUneditable_;  // force document uneditable
+    bool multiple_;         // multiple files to load
+    bool skipNonText_;      // skip non text files
 };
 
 }  // namespace Texxy
