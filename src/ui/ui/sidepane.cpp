@@ -1,7 +1,4 @@
 // src/ui/ui/sidepane.cpp
-/*
- * texxy/sidepane.cpp
- */
 
 #include <QApplication>
 #include <QGridLayout>
@@ -17,6 +14,13 @@
 #include <QRegularExpression>
 #include <QUrl>
 #include <QDir>
+#include <QSet>
+#include <QTimer>
+#include <QLabel>
+#include <QToolButton>
+#include <QTreeView>
+#include <QFileSystemModel>
+#include <QSortFilterProxyModel>
 #include <algorithm>
 
 #include "ui/sidepane.h"
@@ -26,21 +30,24 @@ namespace Texxy {
 
 bool ListWidgetItem::operator<(const QListWidgetItem& other) const {
     // treat dot as a separator for a natural sorting
-    const QString txt1 = text();
-    const QString txt2 = other.text();
+    const QString& txt1 = text();
+    const QString& txt2 = other.text();
     int start1 = 0, start2 = 0;
     for (;;) {
         const int end1 = txt1.indexOf(QLatin1Char('.'), start1);
         const int end2 = txt2.indexOf(QLatin1Char('.'), start2);
         const QString part1 = end1 == -1 ? txt1.sliced(start1) : txt1.sliced(start1, end1 - start1);
         const QString part2 = end2 == -1 ? txt2.sliced(start2) : txt2.sliced(start2, end2 - start2);
+
         int comp = collator_.compare(part1, part2);
         if (comp == 0)
             comp = part1.size() - part2.size();  // workaround for QCollator edge case
         if (comp != 0)
             return comp < 0;
+
         if (end1 == -1 || end2 == -1)
             return end1 < end2;
+
         start1 = end1 + 1;
         start2 = end2 + 1;
     }
@@ -56,39 +63,40 @@ ListWidget::ListWidget(QWidget* parent) : QListWidget(parent), locked_(false) {
     connect(this, &QListWidget::currentItemChanged, [this](QListWidgetItem* current, QListWidgetItem* previous) {
         if (current == previous)
             return;
-        if (current == nullptr) {
+
+        if (!current) {
             if (count() == 0)
                 return;
-            if (previous != nullptr) {
+
+            if (previous) {
                 const int prevRow = row(previous);
                 if (prevRow < count() - 1)
                     setCurrentRow(prevRow + 1);
                 else if (prevRow != 0)
                     setCurrentRow(0);
-            }
-            else {
+            } else {
                 setCurrentRow(0);
             }
+            return;
         }
-        else {
-            emit currentItemUpdated(current);
-            scrollToCurrentItem();
-            // with filtering, Qt may give focus to a hidden item but select a visible one
-            QTimer::singleShot(0, this, [this]() {
-                const auto index = currentIndex();
-                if (index.isValid())
-                    selectionModel()->select(index, QItemSelectionModel::ClearAndSelect);
-            });
-        }
+
+        emit currentItemUpdated(current);
+        scrollToCurrentItem();
+
+        // with filtering, Qt may give focus to a hidden item but select a visible one
+        QTimer::singleShot(0, this, [this]() {
+            const auto index = currentIndex();
+            if (index.isValid())
+                selectionModel()->select(index, QItemSelectionModel::ClearAndSelect);
+        });
     });
 }
 
 /*************************/
 // prevent deselection by Ctrl+LeftClick; see qabstractitemview.cpp
 QItemSelectionModel::SelectionFlags ListWidget::selectionCommand(const QModelIndex& index, const QEvent* event) const {
-    Qt::KeyboardModifiers keyModifiers = event != nullptr && event->isInputEvent()
-                                             ? static_cast<const QInputEvent*>(event)->modifiers()
-                                             : Qt::NoModifier;
+    const Qt::KeyboardModifiers keyModifiers =
+        (event && event->isInputEvent()) ? static_cast<const QInputEvent*>(event)->modifiers() : Qt::NoModifier;
 
     if (selectionMode() == QAbstractItemView::SingleSelection) {
         if (!index.isValid())
@@ -105,6 +113,7 @@ void ListWidget::scrollToCurrentItem() {
     const QModelIndex index = currentIndex();
     if (!index.isValid())
         return;
+
     const QRect rect = visualRect(index);
     const QRect area = viewport()->rect();
     if (rect.isEmpty())
@@ -120,7 +129,7 @@ void ListWidget::scrollToCurrentItem() {
     if (above)
         verticalValue += r.top();
     else
-        verticalValue += qMin(r.top(), r.bottom() - area.height() + 1);
+        verticalValue += std::min(r.top(), r.bottom() - area.height() + 1);
     verticalScrollBar()->setValue(verticalValue);
 }
 
@@ -130,6 +139,7 @@ void ListWidget::mousePressEvent(QMouseEvent* event) {
         event->ignore();
         return;
     }
+
     if (selectionMode() == QAbstractItemView::SingleSelection) {
         if (event->button() == Qt::MiddleButton) {
             const QModelIndex index = indexAt(event->position().toPoint());
@@ -139,16 +149,22 @@ void ListWidget::mousePressEvent(QMouseEvent* event) {
                 emit closeSidePane();
             return;
         }
-        else if (event->button() == Qt::RightButton) {
+        if (event->button() == Qt::RightButton) {
+            event->accept();  // consume to avoid unintended selection changes
             return;
         }
     }
+
     QListWidget::mousePressEvent(event);
 }
 
 /*************************/
 void ListWidget::mouseMoveEvent(QMouseEvent* event) {
     QListWidget::mouseMoveEvent(event);
+
+    if (locked_)
+        return;
+
     if (event->button() == Qt::NoButton && !(event->buttons() & Qt::LeftButton)) {
         if (QListWidgetItem* item = itemAt(event->position().toPoint()))
             QToolTip::showText(event->globalPosition().toPoint(), item->toolTip(), this);
@@ -282,6 +298,8 @@ SidePane::SidePane(QWidget* parent) : QWidget(parent) {
     connect(le_, &QLineEdit::textChanged, this, &SidePane::filter);
     connect(lw_, &ListWidget::rowsAreInserted, this, &SidePane::onRowsInserted);
     connect(lw_, &ListWidget::itemChanged, [this](QListWidgetItem* item) {
+        if (!item)
+            return;
         item->setHidden(!item->text().contains(le_->text(), Qt::CaseInsensitive));
     });
     lw_->installEventFilter(this);
@@ -314,6 +332,7 @@ SidePane::SidePane(QWidget* parent) : QWidget(parent) {
     const QModelIndex proxyRoot = proxy_->mapFromSource(srcRoot);
     tree_->setRootIndex(proxyRoot);
     tree_->expand(proxyRoot);
+    tree_->setCurrentIndex(proxyRoot);
     updateRootWidgets();
 
     // Optional: show only the Name column if you prefer a cleaner list
@@ -353,7 +372,7 @@ void SidePane::resizeEvent(QResizeEvent* event) {
 bool SidePane::eventFilter(QObject* watched, QEvent* event) {
     // Open tab: type to filter
     if (watched == lw_ && event->type() == QEvent::KeyPress) {
-        if (QKeyEvent* ke = static_cast<QKeyEvent*>(event)) {
+        if (auto* ke = static_cast<QKeyEvent*>(event)) {
             if (ke->key() < Qt::Key_Home || ke->key() > Qt::Key_PageDown) {
                 le_->pressKey(ke);
                 return true;  // don't change the selection
@@ -411,7 +430,12 @@ void SidePane::filter(const QString& /*text*/) {
 void SidePane::reallyApplyFilter() {
     for (int i = lw_->count() - 1; i >= 0; --i) {  // end->start keeps scrollbar sane
         QListWidgetItem* wi = lw_->item(i);
-        wi->setHidden(!wi->text().contains(le_->text(), Qt::CaseInsensitive));
+        if (!wi)
+            continue;
+        const bool match = wi->text().contains(le_->text(), Qt::CaseInsensitive);
+        if (wi->isHidden() == !match)
+            continue;
+        wi->setHidden(!match);
     }
     lw_->scrollToCurrentItem();
 }
@@ -419,8 +443,10 @@ void SidePane::reallyApplyFilter() {
 /*************************/
 void SidePane::onRowsInserted(int start, int end) {
     for (int i = start; i <= end; ++i) {
-        if (lw_->item(i) && !lw_->item(i)->text().contains(le_->text(), Qt::CaseInsensitive))
-            lw_->item(i)->setHidden(true);
+        if (QListWidgetItem* it = lw_->item(i)) {
+            if (!it->text().contains(le_->text(), Qt::CaseInsensitive))
+                it->setHidden(true);
+        }
     }
 }
 
@@ -444,9 +470,8 @@ void SidePane::setProjectRoot(const QString& path) {
 
     QFileInfo fi(path);
     QString root = path;
-    if (fi.exists()) {
+    if (fi.exists())
         root = fi.isDir() ? fi.canonicalFilePath() : fi.absolutePath();
-    }
     if (root.isEmpty())
         root = QDir::homePath();
     root = QDir(root).absolutePath();
@@ -460,6 +485,7 @@ void SidePane::setProjectRoot(const QString& path) {
     const QModelIndex proxyRoot = proxy_->mapFromSource(srcRoot);
     tree_->setRootIndex(proxyRoot);
     tree_->expand(proxyRoot);
+    tree_->setCurrentIndex(proxyRoot);
     tree_->scrollToTop();
     updateRootWidgets();
 }
@@ -483,8 +509,7 @@ void SidePane::revealFile(const QString& path) {
     const QString rootPath = QDir::cleanPath(fsModel_->rootPath());
     if (rootPath.isEmpty()) {
         setProjectRoot(fi.absolutePath());
-    }
-    else {
+    } else {
         const QString rel = QDir(rootPath).relativeFilePath(canonical);
         if (rel.startsWith(QLatin1String("..")))
             setProjectRoot(fi.absolutePath());
@@ -496,7 +521,8 @@ void SidePane::revealFile(const QString& path) {
     const QModelIndex idx = proxy_->mapFromSource(src);
     if (!idx.isValid())
         return;
-    tree_->expand(proxy_->parent(idx));
+
+    tree_->expand(idx.parent());
     tree_->scrollTo(idx, QAbstractItemView::PositionAtCenter);
     tree_->setCurrentIndex(idx);
     updateRootWidgets();
@@ -507,9 +533,7 @@ void SidePane::updateRootWidgets() {
         return;
 
     const QString rootPath = QDir::cleanPath(fsModel_->rootPath());
-    QString display = rootPath;
-    if (display.isEmpty())
-        display = tr("No directory selected");
+    QString display = rootPath.isEmpty() ? tr("No directory selected") : rootPath;
 
     rootLabel_->setToolTip(display);
     const int labelWidth = rootLabel_->width() > 0 ? rootLabel_->width() : width();
@@ -564,6 +588,7 @@ void SidePane::revealLastOpened() {
 void SidePane::refreshModel() {
     if (!fsModel_)
         return;
+
     const QString root = fsModel_->rootPath();
     if (!tree_) {
         if (!root.isEmpty())
@@ -580,6 +605,9 @@ void SidePane::refreshModel() {
         const QModelIndex proxyRoot = proxy_->mapFromSource(srcRoot);
         tree_->setRootIndex(proxyRoot);
         tree_->expand(proxyRoot);
+        tree_->setCurrentIndex(proxyRoot);
+        if (tree_->selectionModel())
+            tree_->selectionModel()->clearSelection();
     }
     tree_->setUpdatesEnabled(true);
     updateRootWidgets();
@@ -590,11 +618,11 @@ void SidePane::onTreeActivated(const QModelIndex& proxyIndex) {
     const QModelIndex src = proxy_->mapToSource(proxyIndex);
     if (!src.isValid())
         return;
+
     if (fsModel_->isDir(src)) {
         // (doubleClicked on a dir will still toggle here; harmless)
         tree_->setExpanded(proxyIndex, !tree_->isExpanded(proxyIndex));
-    }
-    else {
+    } else {
         emit openFileRequested(fsModel_->filePath(src));  // opens exactly once now
     }
 }
@@ -619,11 +647,9 @@ void SidePane::onTreeContextMenuRequested(const QPoint& pos) {
 
     if (chosen == openAct && !isDir) {
         emit openFileRequested(path);
-    }
-    else if (chosen == rootAct) {
+    } else if (chosen == rootAct) {
         setProjectRoot(path);
-    }
-    else if (chosen == revealAct) {
+    } else if (chosen == revealAct) {
         const QString toOpen = isDir ? path : QFileInfo(path).absolutePath();
         QDesktopServices::openUrl(QUrl::fromLocalFile(toOpen));
     }
