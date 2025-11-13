@@ -40,7 +40,8 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
     wordButton->setIconSize(QSize(16, 16));
     wordButton->setIcon(symbolicIcon::icon(":icons/view-refresh.svg"));
     wordButton->setToolTip(u"<p style='white-space:pre'>" + tr("Calculate number of words") + u"</p>");
-    connect(wordButton, &QAbstractButton::clicked, this, &TexxyWindow::updateWordInfo);
+    // discard clicked(bool) parameter and call the existing helper
+    connect(wordButton, &QAbstractButton::clicked, this, [this] { updateWordInfo(); });
 
     ui->statusBar->addWidget(statusLabel);
     ui->statusBar->addWidget(wordButton);
