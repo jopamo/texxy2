@@ -43,8 +43,8 @@ namespace Texxy {
     return ui->actionLineNumbers->isChecked() || ui->spinBox->isVisible();
 }
 
-QList<QTextEdit::ExtraSelection> TexxyWindow::composeSelections(
-    TextEdit* textEdit, const QList<QTextEdit::ExtraSelection>& primary) const {
+QList<QTextEdit::ExtraSelection> TexxyWindow::composeSelections(TextEdit* textEdit,
+                                                                const QList<QTextEdit::ExtraSelection>& primary) const {
     // bind as const refs to avoid copies if getters return references
     const auto& blueSel = textEdit->getBlueSel();
     const auto& colSel = textEdit->getColSel();

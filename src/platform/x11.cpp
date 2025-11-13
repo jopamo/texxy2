@@ -43,11 +43,9 @@ long fromDesktop() {
     long* data = nullptr;
 
     // QX11Info::appRootWindow() or even RootWindow(disp, 0) could be used instead of XDefaultRootWindow(disp)
-    const int status = XGetWindowProperty(disp, XDefaultRootWindow(disp),
-                                          XInternAtom(disp, "_NET_CURRENT_DESKTOP", True),
-                                          0, (~0L), False, AnyPropertyType,
-                                          &actual_type, &actual_format, &nitems, &bytes,
-                                          reinterpret_cast<unsigned char**>(&data));
+    const int status = XGetWindowProperty(
+        disp, XDefaultRootWindow(disp), XInternAtom(disp, "_NET_CURRENT_DESKTOP", True), 0, (~0L), False,
+        AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes, reinterpret_cast<unsigned char**>(&data));
     if (status != Success)
         return res;
 
@@ -76,9 +74,8 @@ long onWhichDesktop(Window window) {
 
     long* desktop = nullptr;
 
-    const int status = XGetWindowProperty(disp, window, wm_desktop, 0, 1, False, XA_CARDINAL,
-                                          &type_ret, &fmt_ret, &nitems_ret, &bytes_after_ret,
-                                          reinterpret_cast<unsigned char**>(&desktop));
+    const int status = XGetWindowProperty(disp, window, wm_desktop, 0, 1, False, XA_CARDINAL, &type_ret, &fmt_ret,
+                                          &nitems_ret, &bytes_after_ret, reinterpret_cast<unsigned char**>(&desktop));
     if (status != Success)
         return res;
 
@@ -111,9 +108,8 @@ bool isWindowShaded(Window window) {
     Atom realtype;
     int realformat;
     unsigned long nitems, left;
-    const int result = XGetWindowProperty(disp, window, property, 0L, 8192L, False, XA_ATOM,
-                                          &realtype, &realformat, &nitems, &left,
-                                          reinterpret_cast<unsigned char**>(&atoms));
+    const int result = XGetWindowProperty(disp, window, property, 0L, 8192L, False, XA_ATOM, &realtype, &realformat,
+                                          &nitems, &left, reinterpret_cast<unsigned char**>(&atoms));
     if (result != Success || realtype != XA_ATOM)
         return false;
 

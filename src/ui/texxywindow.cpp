@@ -1,7 +1,4 @@
 // src/ui/texxywindow.cpp
-/*
- * texxywindow.cpp
- */
 
 #include "texxy_ui_prelude.h"
 #include "ui_about.h"

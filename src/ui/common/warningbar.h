@@ -23,20 +23,20 @@
 
 namespace Texxy {
 
-static constexpr int kAnimDurationMs = 150; // animation duration in ms
+static constexpr int kAnimDurationMs = 150;  // animation duration in ms
 
 class WarningBar : public QWidget {
     Q_OBJECT
    public:
     explicit WarningBar(const QString& message, int verticalOffset = 0, int timeout = 10, QWidget* parent = nullptr)
-        : QWidget(parent)
-        , message_(message)
-        , vOffset_(verticalOffset)
-        , isClosing_(false)
-        , mousePressed_(false)
-        , timer_(nullptr)
-        , grid_(nullptr) {
-        bool anotherBar = false; // track if an older bar exists
+        : QWidget(parent),
+          message_(message),
+          vOffset_(verticalOffset),
+          isClosing_(false),
+          mousePressed_(false),
+          timer_(nullptr),
+          grid_(nullptr) {
+        bool anotherBar = false;  // track if an older bar exists
 
         // show only one warning bar at a time
         if (parent) {
@@ -58,12 +58,12 @@ class WarningBar : public QWidget {
 
         // layout with a vertical compressor spacer and the label
         grid_ = new QGridLayout;
-        grid_->setContentsMargins(5, 0, 5, 5); // top margin is added when setting geometry
+        grid_->setContentsMargins(5, 0, 5, 5);  // top margin is added when setting geometry
         auto* spacer = new QSpacerItem(0, 0, QSizePolicy::Minimum, QSizePolicy::MinimumExpanding);
         grid_->addItem(spacer, 0, 0);
 
         auto* warningLabel = new QLabel(message_);
-        warningLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true); // not needed but harmless
+        warningLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);  // not needed but harmless
         warningLabel->setWordWrap(true);
         grid_->addWidget(warningLabel, 1, 0);
         setLayout(grid_);
@@ -84,7 +84,8 @@ class WarningBar : public QWidget {
                 animation_->start();
                 show();
             });
-        } else {
+        }
+        else {
             show();
         }
 
@@ -92,7 +93,7 @@ class WarningBar : public QWidget {
         setTimeout(timeout);
     }
 
-    void setTimeout(int timeout) { // can be used to change the timeout
+    void setTimeout(int timeout) {  // can be used to change the timeout
         if (timeout <= 0) {
             if (timer_) {
                 timer_->stop();

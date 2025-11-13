@@ -158,7 +158,8 @@ void Loading::run() {
     if (mapped) {
         begin = mapped;
         dataLen = fsz;
-    } else {
+    }
+    else {
         fallback = file.readAll();
         begin = reinterpret_cast<const uchar*>(fallback.constData());
         dataLen = fallback.size();
@@ -170,7 +171,10 @@ void Loading::run() {
     struct Unmapper {
         QFile* f = nullptr;
         uchar* p = nullptr;
-        ~Unmapper() { if (f && p) f->unmap(p); }
+        ~Unmapper() {
+            if (f && p)
+                f->unmap(p);
+        }
     } un{&file, mapped};
 
     const bool enforced = !charset_.isEmpty();

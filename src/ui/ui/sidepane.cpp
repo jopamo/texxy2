@@ -74,7 +74,8 @@ ListWidget::ListWidget(QWidget* parent) : QListWidget(parent), locked_(false) {
                     setCurrentRow(prevRow + 1);
                 else if (prevRow != 0)
                     setCurrentRow(0);
-            } else {
+            }
+            else {
                 setCurrentRow(0);
             }
             return;
@@ -509,7 +510,8 @@ void SidePane::revealFile(const QString& path) {
     const QString rootPath = QDir::cleanPath(fsModel_->rootPath());
     if (rootPath.isEmpty()) {
         setProjectRoot(fi.absolutePath());
-    } else {
+    }
+    else {
         const QString rel = QDir(rootPath).relativeFilePath(canonical);
         if (rel.startsWith(QLatin1String("..")))
             setProjectRoot(fi.absolutePath());
@@ -622,7 +624,8 @@ void SidePane::onTreeActivated(const QModelIndex& proxyIndex) {
     if (fsModel_->isDir(src)) {
         // (doubleClicked on a dir will still toggle here; harmless)
         tree_->setExpanded(proxyIndex, !tree_->isExpanded(proxyIndex));
-    } else {
+    }
+    else {
         emit openFileRequested(fsModel_->filePath(src));  // opens exactly once now
     }
 }
@@ -647,9 +650,11 @@ void SidePane::onTreeContextMenuRequested(const QPoint& pos) {
 
     if (chosen == openAct && !isDir) {
         emit openFileRequested(path);
-    } else if (chosen == rootAct) {
+    }
+    else if (chosen == rootAct) {
         setProjectRoot(path);
-    } else if (chosen == revealAct) {
+    }
+    else if (chosen == revealAct) {
         const QString toOpen = isDir ? path : QFileInfo(path).absolutePath();
         QDesktopServices::openUrl(QUrl::fromLocalFile(toOpen));
     }

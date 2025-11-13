@@ -13,7 +13,7 @@ void TexxyWindow::executeProcess() {
     }
     closeWarningBar();
 
-    auto* app = static_cast<TexxyApplication*>(qApp); // non-const so we can call non-const getConfig
+    auto* app = static_cast<TexxyApplication*>(qApp);  // non-const so we can call non-const getConfig
     const Config config = app->getConfig();
     if (!config.getExecuteScripts())
         return;
@@ -23,10 +23,11 @@ void TexxyWindow::executeProcess() {
         return;
 
     if (tabPage->findChild<QProcess*>(QString(), Qt::FindDirectChildrenOnly)) {
-        showWarningBar(
-            "<center><b><big>" + tr("Another process is running in this tab!") + "</big></b></center>"
-            "<center><i>" + tr("Only one process is allowed per tab.") + "</i></center>",
-            15);
+        showWarningBar("<center><b><big>" + tr("Another process is running in this tab!") +
+                           "</big></b></center>"
+                           "<center><i>" +
+                           tr("Only one process is allowed per tab.") + "</i></center>",
+                       15);
         return;
     }
 
@@ -37,9 +38,9 @@ void TexxyWindow::executeProcess() {
     }
 
     auto* process = new QProcess(tabPage);
-    process->setObjectName(fName);  // used in messages
-    process->setProgram(QString()); // set later after command parsing
-    process->setProcessChannelMode(QProcess::SeparateChannels); // keep stdout/stderr split
+    process->setObjectName(fName);                               // used in messages
+    process->setProgram(QString());                              // set later after command parsing
+    process->setProcessChannelMode(QProcess::SeparateChannels);  // keep stdout/stderr split
     process->setWorkingDirectory(QFileInfo(fName).absolutePath());
 
     connect(process, &QProcess::readyReadStandardOutput, this, &TexxyWindow::displayOutput);
@@ -119,7 +120,7 @@ void TexxyWindow::pauseAutoSaving(bool pause) {
         return;
 
     if (pause) {
-        if (!autoSaverPause_.isValid()) { // don't start it again
+        if (!autoSaverPause_.isValid()) {  // don't start it again
             autoSaverPause_.start();
             autoSaverRemainingTime_ = autoSaver_->remainingTime();
         }
@@ -130,7 +131,8 @@ void TexxyWindow::pauseAutoSaving(bool pause) {
         if (autoSaverPause_.hasExpired(autoSaverRemainingTime_)) {
             autoSaverPause_.invalidate();
             autoSave();
-        } else {
+        }
+        else {
             autoSaverPause_.invalidate();
         }
     }

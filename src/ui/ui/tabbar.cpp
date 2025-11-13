@@ -1,17 +1,22 @@
 // src/ui/ui/tabbar.cpp
-/*
- * texxy/tabbar.cpp
- */
 
-#include <QPointer>
-#include <QMouseEvent>
-#include <QDrag>
-#include <QMimeData>
-#include <QIcon>
-#include <QApplication>
-#include <QToolTip>
-#include <QCursor>
 #include "ui/tabbar.h"
+
+#include <QApplication>
+#include <QCursor>
+#include <QDrag>
+#include <QEvent>
+#include <QIcon>
+#include <QMimeData>
+#include <QMouseEvent>
+#include <QPointer>
+#include <QPixmap>
+#include <QSize>
+#include <QTabBar>
+#include <QToolTip>
+#include <QVariant>
+#include <QWheelEvent>
+#include <QWidget>
 
 namespace Texxy {
 
@@ -131,7 +136,7 @@ void TabBar::mouseMoveEvent(QMouseEvent* event) {
     }
 }
 /*************************/
-// Don't show tooltip with setTabToolTip()
+// don't show tooltip with setTabToolTip
 bool TabBar::event(QEvent* event) {
 #ifndef QT_NO_TOOLTIP
     if (event->type() == QEvent::ToolTip)
@@ -193,8 +198,7 @@ QSize TabBar::tabSizeHint(int index) const {
     }
 }
 /*************************/
-// Set minimumTabSizeHint to tabSizeHint
-// to keep tabs from shrinking with eliding
+// set minimumTabSizeHint to tabSizeHint to keep tabs from shrinking with eliding
 QSize TabBar::minimumTabSizeHint(int index) const {
     return tabSizeHint(index);
 }

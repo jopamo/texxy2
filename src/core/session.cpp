@@ -31,8 +31,8 @@ SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::Sess
     setObjectName(QStringLiteral("sessionDialog"));
 
     // style prompt banner
-    ui->promptLabel->setStyleSheet(
-        QStringLiteral("QLabel {background-color: #7d0000; color: white; border-radius: 3px; margin: 2px; padding: 5px;}"));
+    ui->promptLabel->setStyleSheet(QStringLiteral(
+        "QLabel {background-color: #7d0000; color: white; border-radius: 3px; margin: 2px; padding: 5px;}"));
 
     // list widget setup
     ui->listWidget->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
@@ -80,9 +80,8 @@ SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::Sess
     connect(ui->saveBtn, &QAbstractButton::clicked, this, &SessionDialog::saveSession);
     connect(ui->lineEdit, &QLineEdit::returnPressed, this, &SessionDialog::saveSession);
     connect(ui->lineEdit, &LineEdit::receivedFocus, [this] { ui->openBtn->setDefault(false); });
-    connect(ui->lineEdit, &QLineEdit::textEdited, [this](const QString& text) {
-        ui->saveBtn->setEnabled(!text.isEmpty());
-    });
+    connect(ui->lineEdit, &QLineEdit::textEdited,
+            [this](const QString& text) { ui->saveBtn->setEnabled(!text.isEmpty()); });
 
     connect(ui->openBtn, &QAbstractButton::clicked, this, &SessionDialog::openSessions);
     connect(ui->actionOpen, &QAction::triggered, this, &SessionDialog::openSessions);
@@ -111,7 +110,8 @@ SessionDialog::SessionDialog(QWidget* parent) : QDialog(parent), ui(new Ui::Sess
     // initial size proportional to parent
     if (parent_) {
         resize(QSize(parent_->size().width() / 2, 3 * parent_->size().height() / 4));
-    } else {
+    }
+    else {
         resize(QSize(800, 600));
     }
 }
@@ -335,18 +335,23 @@ void SessionDialog::showPrompt(PROMPT prompt) {
     ui->cancelBtn->setVisible(true);
 
     if (prompt == CLEAR) {
-        ui->promptLabel->setText(QStringLiteral("<b>") + tr("Do you really want to remove all saved sessions?") + QStringLiteral("</b>"));
+        ui->promptLabel->setText(QStringLiteral("<b>") + tr("Do you really want to remove all saved sessions?") +
+                                 QStringLiteral("</b>"));
         connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::removeAll);
     }
     else if (prompt == REMOVE) {
         if (ui->listWidget->selectedItems().count() > 1)
-            ui->promptLabel->setText(QStringLiteral("<b>") + tr("Do you really want to remove the selected sessions?") + QStringLiteral("</b>"));
+            ui->promptLabel->setText(QStringLiteral("<b>") + tr("Do you really want to remove the selected sessions?") +
+                                     QStringLiteral("</b>"));
         else
-            ui->promptLabel->setText(QStringLiteral("<b>") + tr("Do you really want to remove the selected session?") + QStringLiteral("</b>"));
+            ui->promptLabel->setText(QStringLiteral("<b>") + tr("Do you really want to remove the selected session?") +
+                                     QStringLiteral("</b>"));
         connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::removeSelected);
     }
     else {  // NAME or RENAME
-        ui->promptLabel->setText(QStringLiteral("<b>") + tr("A session with the same name exists.<br>Do you want to overwrite it?") + QStringLiteral("</b>"));
+        ui->promptLabel->setText(QStringLiteral("<b>") +
+                                 tr("A session with the same name exists.<br>Do you want to overwrite it?") +
+                                 QStringLiteral("</b>"));
         if (prompt == NAME)
             connect(ui->confirmBtn, &QAbstractButton::clicked, this, &SessionDialog::reallySaveSession);
         else

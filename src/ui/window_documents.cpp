@@ -51,13 +51,9 @@ TabPage* TexxyWindow::createEmptyTab(bool setCurrent, bool allowNormalHighlighte
     TexxyApplication* singleton = static_cast<TexxyApplication*>(qApp);
     const Config config = singleton->getConfig();
 
-    static const QList<QKeySequence> searchShortcuts = {
-        QKeySequence(Qt::Key_F3),
-        QKeySequence(Qt::Key_F4),
-        QKeySequence(Qt::Key_F5),
-        QKeySequence(Qt::Key_F6),
-        QKeySequence(Qt::Key_F7)
-    };
+    static const QList<QKeySequence> searchShortcuts = {QKeySequence(Qt::Key_F3), QKeySequence(Qt::Key_F4),
+                                                        QKeySequence(Qt::Key_F5), QKeySequence(Qt::Key_F6),
+                                                        QKeySequence(Qt::Key_F7)};
 
     TabPage* tabPage =
         new TabPage(config.getDarkColScheme() ? config.getDarkBgColorValue() : config.getLightBgColorValue(),
@@ -192,7 +188,8 @@ void TexxyWindow::updateRecenMenu() {
             actions.at(i)->setIcon(icon);
             actions.at(i)->setData(recentFiles.at(i));
             actions.at(i)->setVisible(true);
-        } else {
+        }
+        else {
             actions.at(i)->setText(QString());
             actions.at(i)->setIcon(QIcon());
             actions.at(i)->setData(QVariant());
@@ -243,11 +240,12 @@ void TexxyWindow::asterisk(bool modified) {
     if (fname.isEmpty()) {
         shownName = tr("Untitled");
         setWinTitle((modified ? QStringLiteral("*") : QString()) + shownName);
-    } else {
+    }
+    else {
         shownName = fname.section(QLatin1Char('/'), -1);
-        setWinTitle((modified ? QStringLiteral("*") : QString()) +
-                    (fname.contains(QLatin1Char('/')) ? fname
-                                                      : QFileInfo(fname).absolutePath() + QLatin1Char('/') + fname));
+        setWinTitle(
+            (modified ? QStringLiteral("*") : QString()) +
+            (fname.contains(QLatin1Char('/')) ? fname : QFileInfo(fname).absolutePath() + QLatin1Char('/') + fname));
     }
     shownName.replace(QLatin1Char('\n'), QLatin1Char(' '));
 
@@ -276,8 +274,7 @@ void TexxyWindow::loadText(const QString& fileName,
     if (enforceEncod)
         charset = checkToEncoding();
 
-    auto* thread =
-        new Loading(fileName, charset, reload, restoreCursor, posInLine, enforceUneditable, multiple);
+    auto* thread = new Loading(fileName, charset, reload, restoreCursor, posInLine, enforceUneditable, multiple);
     thread->setSkipNonText(static_cast<TexxyApplication*>(qApp)->getConfig().getSkipNonText());
     connect(thread, &Loading::completed, this, &TexxyWindow::addText);
     connect(thread, &Loading::finished, thread, &QObject::deleteLater);
@@ -343,7 +340,8 @@ void TexxyWindow::addText(const QString& text,
         tabPage = createEmptyTab(!multiple, false);
         textEdit = tabPage->textEdit();
         openInCurrentTab = false;
-    } else {
+    }
+    else {
         if (sidePane_ && !reload && !enforceEncod)  // an unused empty tab
             scrollToFirstItem = true;
     }
@@ -387,12 +385,14 @@ void TexxyWindow::addText(const QString& text,
                 cur.setPosition(pos);
                 QTimer::singleShot(0, textEdit, [textEdit, cur] { textEdit->setTextCursor(cur); });
             }
-        } else if (restoreCursor < -1) {
+        }
+        else if (restoreCursor < -1) {
             // doc end in commandline
             QTextCursor cur = textEdit->textCursor();
             cur.movePosition(QTextCursor::End);
             QTimer::singleShot(0, textEdit, [textEdit, cur] { textEdit->setTextCursor(cur); });
-        } else {
+        }
+        else {
             // restoreCursor >= 2 means 1-based line number
             const int line0 = restoreCursor - 2;  // Qt blocks start at 0
             if (line0 < textEdit->document()->blockCount()) {
@@ -405,7 +405,8 @@ void TexxyWindow::addText(const QString& text,
                 else
                     cur.setPosition(block.position() + posInLine);
                 QTimer::singleShot(0, textEdit, [textEdit, cur] { textEdit->setTextCursor(cur); });
-            } else {
+            }
+            else {
                 QTextCursor cur = textEdit->textCursor();
                 cur.movePosition(QTextCursor::End);
                 QTimer::singleShot(0, textEdit, [textEdit, cur] { textEdit->setTextCursor(cur); });
@@ -477,7 +478,8 @@ void TexxyWindow::addText(const QString& text,
                     ".QWidget {"
                     "color: black;"
                     "background-color: rgb(236, 236, 208);}");
-        } else {
+        }
+        else {
             if (uneditable)
                 textEdit->viewport()->setStyleSheet(
                     ".QWidget {"
@@ -515,7 +517,8 @@ void TexxyWindow::addText(const QString& text,
         disconnect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionUpperCase, &QAction::setEnabled);
         disconnect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionLowerCase, &QAction::setEnabled);
         disconnect(textEdit, &QPlainTextEdit::copyAvailable, ui->actionStartCase, &QAction::setEnabled);
-    } else if (textEdit->isReadOnly()) {
+    }
+    else if (textEdit->isReadOnly()) {
         QTimer::singleShot(0, this, &TexxyWindow::makeEditable);
     }
 
@@ -563,7 +566,8 @@ void TexxyWindow::addText(const QString& text,
             if (uneditable)
                 connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningUneditable,
                         Qt::UniqueConnection);
-        } else if (firstItem) {
+        }
+        else if (firstItem) {
             // select the first item when sidePane exists
             sidePane_->listWidget()->setCurrentItem(firstItem);
         }
@@ -587,8 +591,7 @@ void TexxyWindow::onOpeningHugeFiles() {
     disconnect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningHugeFiles);
     QTimer::singleShot(0, this, [=]() {
         showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>\n<center>%2</center>")
-                           .arg(tr("Huge file(s) not opened!"),
-                                tr("Texxy does not open files larger than 100 MiB.")));
+                           .arg(tr("Huge file(s) not opened!"), tr("Texxy does not open files larger than 100 MiB.")));
     });
 }
 
@@ -605,9 +608,9 @@ void TexxyWindow::onOpeninNonTextFiles() {
 void TexxyWindow::onPermissionDenied() {
     disconnect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onPermissionDenied);
     QTimer::singleShot(0, this, [=]() {
-        showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>\n<center>%2</center>")
-                           .arg(tr("Some file(s) could not be opened!"),
-                                tr("You may not have the permission to read.")));
+        showWarningBar(
+            QStringLiteral("<center><b><big>%1</big></b></center>\n<center>%2</center>")
+                .arg(tr("Some file(s) could not be opened!"), tr("You may not have the permission to read.")));
     });
 }
 
@@ -615,9 +618,9 @@ void TexxyWindow::onOpeningUneditable() {
     disconnect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningUneditable);
     // a timer is needed because the scrollbar position is restored on reloading by a lambda connection
     QTimer::singleShot(0, this, [=]() {
-        showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>\n<center>%2</center>")
-                           .arg(tr("Uneditable file(s)!"),
-                                tr("Non-text files or files with huge lines cannot be edited.")));
+        showWarningBar(
+            QStringLiteral("<center><b><big>%1</big></b></center>\n<center>%2</center>")
+                .arg(tr("Uneditable file(s)!"), tr("Non-text files or files with huge lines cannot be edited.")));
     });
 }
 
@@ -628,16 +631,15 @@ void TexxyWindow::onOpeningNonexistent() {
         if (TabPage* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
             const QString fname = tabPage->textEdit()->getFileName();
             if (!fname.isEmpty() && !QFile::exists(fname))
-                showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>")
-                                   .arg(tr("The file does not exist.")));
+                showWarningBar(
+                    QStringLiteral("<center><b><big>%1</big></b></center>").arg(tr("The file does not exist.")));
         }
     });
 }
 
 void TexxyWindow::columnWarning() {
     showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>\n<center>%2</center>")
-                       .arg(tr("Huge column!"),
-                            tr("Columns with more than 1000 rows are not supported.")));
+                       .arg(tr("Huge column!"), tr("Columns with more than 1000 rows are not supported.")));
 }
 
 void TexxyWindow::newTabFromName(const QString& fileName, int restoreCursor, int posInLine, bool multiple) {
@@ -675,7 +677,8 @@ void TexxyWindow::openFilesFromDialog() {
                 dir = QDir::home();
             path = dir.path();
         }
-    } else {
+    }
+    else {
         // remember the last opened file
         fname = lastFile_;
         if (!fname.isEmpty()) {
@@ -683,7 +686,8 @@ void TexxyWindow::openFilesFromDialog() {
             if (!dir.exists())
                 dir = QDir::home();
             path = dir.path();
-        } else {
+        }
+        else {
             QDir dir = QDir::home();
             path = dir.path();
         }
@@ -782,7 +786,8 @@ void TexxyWindow::enforceEncoding(QAction* a) {
 
         a->setChecked(true);  // the checked action might have been changed to UTF-8 with saving
         loadText(fname, true, true, 0, 0, textEdit->isUneditable(), false);
-    } else {
+    }
+    else {
         // just change the statusbar text, the doc might be saved later with the new encoding
         textEdit->setEncoding(checkToEncoding());
         if (ui->statusBar->isVisible()) {
@@ -858,11 +863,11 @@ void TexxyWindow::reloadSyntaxHighlighter(TextEdit* textEdit) {
             // there was no real language before saving, prevLan was url
             const QString lineStr = QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1").arg(tr("Lines"));
             const int j = str.indexOf(lineStr);
-            syntaxStr = QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1</b> <i>%2</i>")
-                            .arg(tr("Syntax:"))
-                            .arg(textEdit->getProg());
+            syntaxStr =
+                QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1</b> <i>%2</i>").arg(tr("Syntax:")).arg(textEdit->getProg());
             str.insert(j, syntaxStr);
-        } else {
+        }
+        else {
             if (textEdit->getProg() == QLatin1String("url")) {
                 // there's no real language after saving
                 const QString syntaxTag = QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1").arg(tr("Syntax"));
@@ -870,7 +875,8 @@ void TexxyWindow::reloadSyntaxHighlighter(TextEdit* textEdit) {
                 const int j = str.indexOf(syntaxTag);
                 const int k = str.indexOf(lineTag);
                 str.remove(j, k - j);
-            } else {
+            }
+            else {
                 // the language is changed by saving
                 const QString linesEnd = QStringLiteral("</i>&nbsp;&nbsp;&nbsp;<b>%1").arg(tr("Lines"));
                 const int j = str.indexOf(linesEnd);
@@ -952,7 +958,8 @@ void TexxyWindow::fontDialog() {
                     thisTextEdit->setEditorFont(newFont);
                 }
             }
-        } else {
+        }
+        else {
             textEdit->setEditorFont(newFont);
         }
 
@@ -1041,13 +1048,11 @@ void TexxyWindow::statusMsgWithLineCount(const int lines) {
     QLabel* statusLabel = ui->statusBar->findChild<QLabel*>(QStringLiteral("statusLabel"));
 
     // order: Encoding -> Syntax -> Lines -> Sel. Chars -> Words
-    const QString encodStr =
-        QStringLiteral("<b>%1</b> <i>%2</i>").arg(tr("Encoding:"), textEdit->getEncoding());
+    const QString encodStr = QStringLiteral("<b>%1</b> <i>%2</i>").arg(tr("Encoding:"), textEdit->getEncoding());
 
     QString syntaxStr;
     if (textEdit->getProg() != QLatin1String("help") && textEdit->getProg() != QLatin1String("url"))
-        syntaxStr =
-            QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1</b> <i>%2</i>").arg(tr("Syntax:"), textEdit->getProg());
+        syntaxStr = QStringLiteral("&nbsp;&nbsp;&nbsp;<b>%1</b> <i>%2</i>").arg(tr("Syntax:"), textEdit->getProg());
 
     const QLocale l = locale();
     const QString lineStr =
@@ -1135,7 +1140,8 @@ void TexxyWindow::enforceLang(QAction* action) {
             textEdit->getProg() == QLatin1String("srt") || textEdit->getProg() == QLatin1String("gtkrc")) {
             // not listed by the language button
             lang = textEdit->getProg();
-        } else {
+        }
+        else {
             lang = QStringLiteral("url");  // the default highlighter
         }
     }
@@ -1172,15 +1178,17 @@ void TexxyWindow::updateWordInfo(int /*position*/, int charsRemoved, int charsAd
         QLabel* statusLabel = ui->statusBar->findChild<QLabel*>(QStringLiteral("statusLabel"));
         int words = textEdit->getWordNumber();
         if (words == -1) {
-            words = textEdit->toPlainText().split(QRegularExpression(QStringLiteral("(\\s|\\n|\\r)+")),
-                                                  Qt::SkipEmptyParts).count();
+            words = textEdit->toPlainText()
+                        .split(QRegularExpression(QStringLiteral("(\\s|\\n|\\r)+")), Qt::SkipEmptyParts)
+                        .count();
             textEdit->setWordNumber(words);
         }
 
         wordButton->setVisible(false);
         statusLabel->setText(QStringLiteral("%1 <i>%2</i>").arg(statusLabel->text(), locale().toString(words)));
         connect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::updateWordInfo);
-    } else if (charsRemoved > 0 || charsAdded > 0) {
+    }
+    else if (charsRemoved > 0 || charsAdded > 0) {
         // not if only the format is changed
         disconnect(textEdit->document(), &QTextDocument::contentsChange, this, &TexxyWindow::updateWordInfo);
         textEdit->setWordNumber(-1);

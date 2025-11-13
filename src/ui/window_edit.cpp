@@ -40,8 +40,8 @@ void TexxyWindow::toSoftTabs() {
         unbusy();
         if (res) {
             removeGreenSel();
-            showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>")
-                               .arg(tr("Text tabs are converted to spaces.")));
+            showWarningBar(
+                QStringLiteral("<center><b><big>%1</big></b></center>").arg(tr("Text tabs are converted to spaces.")));
         }
     }
 }
@@ -50,9 +50,8 @@ void TexxyWindow::insertDate() {
     if (TextEdit* te = curEdit(this)) {
         const auto& config = static_cast<TexxyApplication*>(qApp)->getConfig();
         const QString format = config.getDateFormat();
-        te->insertPlainText(format.isEmpty()
-                                ? locale().toString(QDateTime::currentDateTime(), QLocale::ShortFormat)
-                                : locale().toString(QDateTime::currentDateTime(), format));
+        te->insertPlainText(format.isEmpty() ? locale().toString(QDateTime::currentDateTime(), QLocale::ShortFormat)
+                                             : locale().toString(QDateTime::currentDateTime(), format));
     }
 }
 
@@ -135,8 +134,7 @@ void TexxyWindow::startCase() {
 
         if (showWarn) {
             showWarningBar(QStringLiteral("<center><b><big>%1</big></b></center>\n<center>%2</center>")
-                               .arg(tr("The selected text was too long."),
-                                    tr("It is not fully processed.")));
+                               .arg(tr("The selected text was too long."), tr("It is not fully processed.")));
         }
     }
 }
@@ -210,7 +208,8 @@ void TexxyWindow::makeEditable() {
     if (!te->hasDarkScheme()) {
         te->viewport()->setStyleSheet(QStringLiteral(".QWidget {color: black; background-color: rgb(%1, %1, %1);}")
                                           .arg(config.getLightBgColorValue()));
-    } else {
+    }
+    else {
         te->viewport()->setStyleSheet(QStringLiteral(".QWidget {color: white; background-color: rgb(%1, %1, %1);}")
                                           .arg(config.getDarkBgColorValue()));
     }
@@ -254,10 +253,10 @@ void TexxyWindow::addRemoveLangBtn(bool add) {
                  << QStringLiteral("go") << QStringLiteral("log") << QStringLiteral("lua") << QStringLiteral("m3u")
                  << QStringLiteral("markdown") << QStringLiteral("makefile") << QStringLiteral("pascal")
                  << QStringLiteral("perl") << QStringLiteral("php") << QStringLiteral("python")
-                 << QStringLiteral("qmake") << QStringLiteral("qml") << QStringLiteral("reST")
-                 << QStringLiteral("ruby") << QStringLiteral("rust") << QStringLiteral("scss") << QStringLiteral("sh")
-                 << QStringLiteral("tcl") << QStringLiteral("toml") << QStringLiteral("troff")
-                 << QStringLiteral("xml") << QStringLiteral("yaml");
+                 << QStringLiteral("qmake") << QStringLiteral("qml") << QStringLiteral("reST") << QStringLiteral("ruby")
+                 << QStringLiteral("rust") << QStringLiteral("scss") << QStringLiteral("sh") << QStringLiteral("tcl")
+                 << QStringLiteral("toml") << QStringLiteral("troff") << QStringLiteral("xml")
+                 << QStringLiteral("yaml");
         langList.sort(Qt::CaseInsensitive);
     }
 
@@ -443,7 +442,8 @@ void TexxyWindow::editorContextMenu(const QPoint& p) {
                     url = QUrl::fromUserInput(str, QStringLiteral("/"));
                 // prefer gio over xdg-open when available
                 if (QStandardPaths::findExecutable(QStringLiteral("gio")).isEmpty() ||
-                    !QProcess::startDetached(QStringLiteral("gio"), QStringList() << QStringLiteral("open") << url.toString())) {
+                    !QProcess::startDetached(QStringLiteral("gio"), QStringList()
+                                                                        << QStringLiteral("open") << url.toString())) {
                     QDesktopServices::openUrl(url);
                 }
             });
@@ -541,7 +541,8 @@ void TexxyWindow::focusSidePane() {
         if (config.getRemSplitterPos()) {
             sizes.append(std::min(std::max(16, config.getSplitterPos()), size().width() / 2));
             sizes.append(100);
-        } else {
+        }
+        else {
             const int s = std::min(size().width() / 5, 40 * sidePane_->fontMetrics().horizontalAdvance(' '));
             sizes << s << size().width() - s;
         }
@@ -612,7 +613,8 @@ void TexxyWindow::jumpTo() {
     if (!visibility) {
         ui->spinBox->setFocus();
         ui->spinBox->selectAll();
-    } else if (TabPage* tp = curTab(this)) {
+    }
+    else if (TabPage* tp = curTab(this)) {
         tp->textEdit()->setFocus();
     }
 }

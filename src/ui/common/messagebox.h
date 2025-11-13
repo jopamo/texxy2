@@ -50,7 +50,7 @@ class MessageBox : public QMessageBox {
 
             t.replace("<br>", "\n");
 
-            const QStringList lines = t.split('\n'); // deal with newlines
+            const QStringList lines = t.split('\n');  // deal with newlines
             const QFontMetrics fm(font());
             for (const QString& line : lines)
                 tw = std::max(tw, fm.horizontalAdvance(line));
