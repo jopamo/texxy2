@@ -614,7 +614,7 @@ TexxyWindow::DOCSTATE TexxyWindow::savePrompt(int tabIndex,
         updateShortcuts(true);
 
         MessageBox msgBox(this);
-        msgBox.setIcon(QMessageBox::Question);
+        msgBox.setIcon(QMessageBox::NoIcon);
         msgBox.setText(QStringLiteral("<center><b><big>") + tr("Save changes?") +
                        QStringLiteral("</big></b></center>"));
         if (isRemoved)

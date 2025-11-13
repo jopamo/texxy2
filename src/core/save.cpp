@@ -168,7 +168,7 @@ bool TexxyWindow::promptAndWriteWithChosenEOL(const QString& fname,
     updateShortcuts(true);
 
     MessageBox msgBox(this);
-    msgBox.setIcon(QMessageBox::Question);
+    msgBox.setIcon(QMessageBox::NoIcon);
     msgBox.addButton(QMessageBox::Yes);
     msgBox.addButton(QMessageBox::No);
     msgBox.addButton(QMessageBox::Cancel);
