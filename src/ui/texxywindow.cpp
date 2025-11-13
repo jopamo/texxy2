@@ -26,12 +26,13 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
     ui->checkBox->hide();
 
     // status bar
-    auto* statusLabel = new QLabel();
+    auto* statusLabel = new QLabel(ui->statusBar);
     statusLabel->setObjectName("statusLabel");
     statusLabel->setIndent(2);
     statusLabel->setMinimumWidth(100);
     statusLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    auto* wordButton = new QToolButton();
+
+    auto* wordButton = new QToolButton(ui->statusBar);
     wordButton->setObjectName("wordButton");
     wordButton->setFocusPolicy(Qt::NoFocus);
     wordButton->setAutoRaise(true);
@@ -39,13 +40,13 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
     wordButton->setIconSize(QSize(16, 16));
     wordButton->setIcon(symbolicIcon::icon(":icons/view-refresh.svg"));
     wordButton->setToolTip(u"<p style='white-space:pre'>" + tr("Calculate number of words") + u"</p>");
-    connect(wordButton, &QAbstractButton::clicked, [this] { updateWordInfo(); });
+    connect(wordButton, &QAbstractButton::clicked, this, &TexxyWindow::updateWordInfo);
+
     ui->statusBar->addWidget(statusLabel);
     ui->statusBar->addWidget(wordButton);
 
     // text unlocking
     ui->actionEdit->setVisible(false);
-
     ui->actionRun->setVisible(false);
 
     // replace dock
@@ -86,9 +87,10 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
 
     applyConfigOnStarting();
 
-    auto* spacer = new QWidget();
+    auto* spacer = new QWidget(ui->mainToolBar);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     ui->mainToolBar->insertWidget(ui->actionMenu, spacer);
+
     auto* menu = new QMenu(ui->mainToolBar);
     menu->addMenu(ui->menuFile);
     menu->addMenu(ui->menuEdit);
@@ -96,6 +98,7 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
     menu->addMenu(ui->menuSearch);
     menu->addMenu(ui->menuHelp);
     ui->actionMenu->setMenu(menu);
+
     const auto tbList = ui->mainToolBar->findChildren<QToolButton*>();
     if (!tbList.isEmpty())
         tbList.at(tbList.count() - 1)->setPopupMode(QToolButton::InstantPopup);
@@ -210,8 +213,9 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
         if (sidePane_)
             sidePane_->listWidget()->scrollToCurrentItem();
     });
+
     ui->actionSidePane->setAutoRepeat(false);  // don't let UI change too rapidly
-    connect(ui->actionSidePane, &QAction::triggered, [this] { toggleSidePane(); });
+    connect(ui->actionSidePane, &QAction::triggered, this, &TexxyWindow::toggleSidePane);
 
     // see comment block explaining KDE KAcceleratorManager mnemonic behavior
     ui->toolButtonNext->setShortcut(QKeySequence(Qt::Key_F8));
@@ -228,7 +232,7 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
     connect(zoomzero, &QShortcut::activated, this, &TexxyWindow::zoomZero);
 
     auto* fullscreen = new QShortcut(QKeySequence(Qt::Key_F11), this);
-    connect(fullscreen, &QShortcut::activated, [this] { setWindowState(windowState() ^ Qt::WindowFullScreen); });
+    connect(fullscreen, &QShortcut::activated, this, [this] { setWindowState(windowState() ^ Qt::WindowFullScreen); });
 
     auto* focusView = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     connect(focusView, &QShortcut::activated, this, &TexxyWindow::focusView);
@@ -248,16 +252,20 @@ TexxyWindow::TexxyWindow(QWidget* parent) : QMainWindow(parent), dummyWidget(nul
 /*************************/
 TexxyWindow::~TexxyWindow() {
     startAutoSaving(false);
+
     delete dummyWidget;
     dummyWidget = nullptr;
+
     delete aGroup_;
     aGroup_ = nullptr;
+
     delete ui;
     ui = nullptr;
 }
 /*************************/
 void TexxyWindow::closeEvent(QCloseEvent* event) {
     auto* singleton = static_cast<TexxyApplication*>(qApp);
+
     // with Qt6, QCoreApplication::quit() calls closeEvent when visible
     // when a quit signal is received we accept without prompt
     if (singleton->isQuitSignalReceived()) {
@@ -270,21 +278,22 @@ void TexxyWindow::closeEvent(QCloseEvent* event) {
         event->ignore();
         if (!locked_)
             lastWinFilesCur_.clear();  // precaution
+        return;
     }
-    else {
-        Config& config = singleton->getConfig();
-        if (!isMaximized() && !isFullScreen()) {
-            if (config.getRemSize())
-                config.setWinSize(size());
-            if (config.getRemPos() && !static_cast<TexxyApplication*>(qApp)->isWayland())
-                config.setWinPos(geometry().topLeft());
-        }
-        if (sidePane_ && config.getRemSplitterPos())
-            config.setSplitterPos(ui->splitter->sizes().at(0));
-        config.setLastFileCursorPos(lastWinFilesCur_);
-        singleton->removeWin(this);
-        event->accept();
+
+    Config& config = singleton->getConfig();
+    if (!isMaximized() && !isFullScreen()) {
+        if (config.getRemSize())
+            config.setWinSize(size());
+        if (config.getRemPos() && !singleton->isWayland())
+            config.setWinPos(geometry().topLeft());
     }
+    if (sidePane_ && config.getRemSplitterPos())
+        config.setSplitterPos(ui->splitter->sizes().at(0));
+
+    config.setLastFileCursorPos(lastWinFilesCur_);
+    singleton->removeWin(this);
+    event->accept();
 }
 /*************************/
 // should be called only when the app quits without closing its windows
@@ -296,14 +305,14 @@ void TexxyWindow::cleanUpOnTerminating(Config& config, bool isLastWin) {
     lastWinFilesCur_.clear();
     for (int i = 0; i < ui->tabWidget->count(); ++i) {
         if (auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->widget(i))) {
-            const QPointer<TextEdit> textEditPtr = tabPage->textEdit();
-            TextEdit* textEdit = textEditPtr.data();
-            if (!textEdit)
-                continue;
-            const QString fileName = textEdit->getFileName();
-            if (!fileName.isEmpty()) {
+            if (auto* textEdit = tabPage->textEdit().data()) {
+                const QString fileName = textEdit->getFileName();
+                if (fileName.isEmpty())
+                    continue;
+
                 if (textEdit->getSaveCursor())
                     config.saveCursorPos(fileName, textEdit->textCursor().position());
+
                 if (isLastWin && config.getSaveLastFilesList() && lastWinFilesCur_.size() < kMaxLastWinFiles &&
                     QFile::exists(fileName)) {
                     lastWinFilesCur_.insert(fileName, textEdit->textCursor().position());
@@ -327,15 +336,19 @@ void TexxyWindow::menubarTitle(bool add, bool setTitle) {
 
     if (cw != nullptr || ui->menuBar->isHidden())
         return;
+
     auto* mbTitle = new MenuBarTitle();
     ui->menuBar->setCornerWidget(mbTitle);
+
     const auto menubarActions = ui->menuBar->actions();
     if (!menubarActions.isEmpty()) {
         const QRect g = ui->menuBar->actionGeometry(menubarActions.last());
-        mbTitle->setStart(QApplication::layoutDirection() == Qt::RightToLeft ? ui->menuBar->width() - g.left()
-                                                                             : g.right() + 1);
+        const int start =
+            (QApplication::layoutDirection() == Qt::RightToLeft) ? ui->menuBar->width() - g.left() : g.right() + 1;
+        mbTitle->setStart(start);
         mbTitle->setHeightOverride(g.height());
     }
+
     mbTitle->show();
     connect(mbTitle, &QWidget::customContextMenuRequested, this, &TexxyWindow::tabContextMenu);
     connect(mbTitle, &MenuBarTitle::doubleClicked, this, [this] {
@@ -350,13 +363,14 @@ void TexxyWindow::menubarTitle(bool add, bool setTitle) {
 }
 /*************************/
 void TexxyWindow::applyConfigOnStarting() {
-    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
+    auto* app = static_cast<TexxyApplication*>(qApp);
+    Config& config = app->getConfig();
 
     // geometry and window state
     if (config.getRemSize()) {
         resize(config.getWinSize());
         // on Wayland or when position isn't remembered, apply state now, otherwise showEvent handles it
-        if (!config.getRemPos() || static_cast<TexxyApplication*>(qApp)->isWayland()) {
+        if (!config.getRemPos() || app->isWayland()) {
             Qt::WindowStates st = {};
             if (config.getIsMaxed())
                 st |= Qt::WindowMaximized;
@@ -398,6 +412,7 @@ void TexxyWindow::applyConfigOnStarting() {
         if (config.getShowCursorPos())
             addCursorPosLabel();
     }
+
     if (config.getShowLangSelector() && config.getSyntaxByDefault())
         addRemoveLangBtn(true);
 
@@ -419,6 +434,7 @@ void TexxyWindow::applyConfigOnStarting() {
     // recently opened menu
     if (config.getRecentOpened())
         ui->menuOpenRecently->setTitle(tr("&Recently Opened"));
+
     const int recentNumber = config.getCurRecentFilesNumber();
     if (recentNumber <= 0) {
         ui->menuOpenRecently->setEnabled(false);
@@ -625,7 +641,8 @@ void TexxyWindow::applyConfigOnStarting() {
 void TexxyWindow::addCursorPosLabel() {
     if (ui->statusBar->findChild<QLabel*>("posLabel"))
         return;
-    auto* posLabel = new QLabel();
+
+    auto* posLabel = new QLabel(ui->statusBar);
     posLabel->setObjectName("posLabel");
     posLabel->setText(u"<b>" + tr("Position:") + u"</b>");
     posLabel->setIndent(2);
@@ -637,33 +654,31 @@ void TexxyWindow::addCursorPosLabel() {
 // keep window-modality but prevent two window-modal dialogs at once
 bool TexxyWindow::hasAnotherDialog() {
     closeWarningBar();
-    bool res = false;
+
     auto* singleton = static_cast<TexxyApplication*>(qApp);
     for (int i = 0; i < singleton->Wins.count(); ++i) {
         TexxyWindow* win = singleton->Wins.at(i);
-        if (win != this) {
-            const QList<QDialog*> dialogs = win->findChildren<QDialog*>();
-            for (auto* dlg : dialogs) {
-                if (dlg->isModal()) {
-                    res = true;
-                    break;
-                }
-            }
-            if (res)
-                break;
+        if (win == this)
+            continue;
+
+        const QList<QDialog*> dialogs = win->findChildren<QDialog*>();
+        for (auto* dlg : dialogs) {
+            if (!dlg->isModal())
+                continue;
+
+            showWarningBar("<center><b><big>" + tr("Another Texxy window has a modal dialog!") + "</big></b></center>" +
+                               "<center><i>" + tr("Please attend to that window or just close its dialog!") +
+                               "</i></center>",
+                           15);
+            return true;
         }
     }
-    if (res) {
-        showWarningBar("<center><b><big>" + tr("Another Texxy window has a modal dialog!") + "</big></b></center>" +
-                           "<center><i>" + tr("Please attend to that window or just close its dialog!") +
-                           "</i></center>",
-                       15);
-    }
-    return res;
+    return false;
 }
 /*************************/
 void TexxyWindow::updateGUIForSingleTab(bool single) {
-    ui->actionDetachTab->setEnabled(!single && !static_cast<TexxyApplication*>(qApp)->isStandAlone());
+    const bool detachAllowed = !single && !static_cast<TexxyApplication*>(qApp)->isStandAlone();
+    ui->actionDetachTab->setEnabled(detachAllowed);
     ui->actionRightTab->setEnabled(!single);
     ui->actionLeftTab->setEnabled(!single);
     ui->actionLastTab->setEnabled(!single);
@@ -671,23 +686,26 @@ void TexxyWindow::updateGUIForSingleTab(bool single) {
 }
 /*************************/
 void TexxyWindow::updateCustomizableShortcuts(bool disable) {
-    auto iter = defaultShortcuts_.constBegin();
     if (disable) {
+        auto iter = defaultShortcuts_.constBegin();
         while (iter != defaultShortcuts_.constEnd()) {
             iter.key()->setShortcut(QKeySequence());
             ++iter;
         }
+        return;
     }
-    else {
-        QHash<QString, QString> ca = static_cast<TexxyApplication*>(qApp)->getConfig().customShortcutActions();
-        const QList<QString> cn = ca.keys();
 
-        while (iter != defaultShortcuts_.constEnd()) {
-            const QString name = iter.key()->objectName();
-            iter.key()->setShortcut(cn.contains(name) ? QKeySequence(ca.value(name), QKeySequence::PortableText)
-                                                      : iter.value());
-            ++iter;
-        }
+    const QHash<QString, QString> ca = static_cast<TexxyApplication*>(qApp)->getConfig().customShortcutActions();
+    const QList<QString> cn = ca.keys();
+
+    auto iter = defaultShortcuts_.constBegin();
+    while (iter != defaultShortcuts_.constEnd()) {
+        QAction* action = iter.key();
+        const QString name = action->objectName();
+        const QKeySequence seq =
+            cn.contains(name) ? QKeySequence(ca.value(name), QKeySequence::PortableText) : iter.value();
+        action->setShortcut(seq);
+        ++iter;
     }
 }
 /*************************/
@@ -714,6 +732,7 @@ void TexxyWindow::updateShortcuts(bool disable, bool page) {
         ui->toolButtonPrv->setShortcut(QKeySequence(Qt::Key_F9));
         ui->toolButtonAll->setShortcut(QKeySequence(Qt::Key_F10));
     }
+
     updateCustomizableShortcuts(disable);
 
     if (page) {
@@ -726,6 +745,7 @@ void TexxyWindow::displayMessage(bool error) {
     auto* process = qobject_cast<QProcess*>(QObject::sender());
     if (!process)
         return;
+
     QByteArray msg;
     if (error) {
         process->setReadChannel(QProcess::StandardError);
@@ -735,6 +755,7 @@ void TexxyWindow::displayMessage(bool error) {
         process->setReadChannel(QProcess::StandardOutput);
         msg = process->readAllStandardOutput();
     }
+
     if (msg.isEmpty())
         return;
 
@@ -746,46 +767,54 @@ void TexxyWindow::displayMessage(bool error) {
             break;
         }
     }
+
+    const QString msgText = QString::fromUtf8(msg);
+
     if (msgDlg) {
         if (auto* tEdit = msgDlg->findChild<QPlainTextEdit*>()) {
-            tEdit->setPlainText(tEdit->toPlainText() + u"\n" + QString::fromUtf8(msg));
-            QTextCursor cur = tEdit->textCursor();
-            cur.movePosition(QTextCursor::End);
-            tEdit->setTextCursor(cur);
+            tEdit->appendPlainText(msgText);
             stealFocus(msgDlg);
         }
+        return;
     }
-    else {
-        msgDlg = new QDialog(qobject_cast<QWidget*>(process->parent()));
-        msgDlg->setWindowTitle(tr("Script Output"));
-        msgDlg->setSizeGripEnabled(true);
-        auto* grid = new QGridLayout;
-        auto* label = new QLabel(msgDlg);
-        label->setText(u"<center><b>" + tr("Script File") + u": </b></center><i>" + process->objectName() + u"</i>");
-        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        label->setWordWrap(true);
-        label->setMargin(5);
-        grid->addWidget(label, 0, 0, 1, 2);
-        auto* tEdit = new QPlainTextEdit(msgDlg);
-        tEdit->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        tEdit->ensureCursorVisible();
-        grid->addWidget(tEdit, 1, 0, 1, 2);
-        auto* closeButton = new QPushButton(QIcon::fromTheme("edit-delete"), tr("Close"));
-        connect(closeButton, &QAbstractButton::clicked, msgDlg, &QDialog::reject);
-        grid->addWidget(closeButton, 2, 1, Qt::AlignRight);
-        auto* clearButton = new QPushButton(QIcon::fromTheme("edit-clear"), tr("Clear"));
-        connect(clearButton, &QAbstractButton::clicked, tEdit, &QPlainTextEdit::clear);
-        grid->addWidget(clearButton, 2, 0, Qt::AlignLeft);
-        msgDlg->setLayout(grid);
-        tEdit->setPlainText(QString::fromUtf8(msg));
-        QTextCursor cur = tEdit->textCursor();
-        cur.movePosition(QTextCursor::End);
-        tEdit->setTextCursor(cur);
-        msgDlg->setAttribute(Qt::WA_DeleteOnClose);
-        msgDlg->show();
-        msgDlg->raise();
-        msgDlg->activateWindow();
-    }
+
+    msgDlg = new QDialog(qobject_cast<QWidget*>(process->parent()));
+    msgDlg->setWindowTitle(tr("Script Output"));
+    msgDlg->setSizeGripEnabled(true);
+
+    auto* grid = new QGridLayout(msgDlg);
+
+    auto* label = new QLabel(msgDlg);
+    label->setText(u"<center><b>" + tr("Script File") + u": </b></center><i>" + process->objectName() + u"</i>");
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    label->setWordWrap(true);
+    label->setMargin(5);
+    grid->addWidget(label, 0, 0, 1, 2);
+
+    auto* tEdit = new QPlainTextEdit(msgDlg);
+    tEdit->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    tEdit->ensureCursorVisible();
+    grid->addWidget(tEdit, 1, 0, 1, 2);
+
+    auto* closeButton = new QPushButton(QIcon::fromTheme("edit-delete"), tr("Close"));
+    connect(closeButton, &QAbstractButton::clicked, msgDlg, &QDialog::reject);
+    grid->addWidget(closeButton, 2, 1, Qt::AlignRight);
+
+    auto* clearButton = new QPushButton(QIcon::fromTheme("edit-clear"), tr("Clear"));
+    connect(clearButton, &QAbstractButton::clicked, tEdit, &QPlainTextEdit::clear);
+    grid->addWidget(clearButton, 2, 0, Qt::AlignLeft);
+
+    msgDlg->setLayout(grid);
+
+    tEdit->setPlainText(msgText);
+    QTextCursor cur = tEdit->textCursor();
+    cur.movePosition(QTextCursor::End);
+    tEdit->setTextCursor(cur);
+
+    msgDlg->setAttribute(Qt::WA_DeleteOnClose);
+    msgDlg->show();
+    msgDlg->raise();
+    msgDlg->activateWindow();
 }
 /*************************/
 void TexxyWindow::makeBusy() {
@@ -802,6 +831,7 @@ void TexxyWindow::showWarningBar(const QString& message, int timeout, bool start
     // don't show this warning bar if the window is locked at this moment
     if (locked_)
         return;
+
     if (timeout > 0) {
         // don't show the temporary warning bar when there's a modal dialog
         const QList<QDialog*> dialogs = findChildren<QDialog*>();
@@ -813,10 +843,8 @@ void TexxyWindow::showWarningBar(const QString& message, int timeout, bool start
 
     auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget());
     TextEdit* curEdit = nullptr;
-    if (tabPage) {
-        const QPointer<TextEdit> te = tabPage->textEdit();
-        curEdit = te.data();
-    }
+    if (tabPage)
+        curEdit = tabPage->textEdit().data();
 
     // don't close and show the same warning bar
     if (auto* prevBar = ui->tabWidget->findChild<WarningBar*>()) {
@@ -833,17 +861,20 @@ void TexxyWindow::showWarningBar(const QString& message, int timeout, bool start
     int vOffset = 0;
     if (tabPage && curEdit)
         vOffset = tabPage->height() - curEdit->height();
+
     auto* bar = new WarningBar(message, vOffset, timeout, ui->tabWidget);
     if (startupBar)
         bar->setObjectName("startupBar");
+
     // close the bar when the text is scrolled
     if (curEdit && timeout > 0)
         connect(curEdit, &QPlainTextEdit::updateRequest, bar, &WarningBar::closeBarOnScrolling);
 }
 /*************************/
 void TexxyWindow::showRootWarning() {
-    QTimer::singleShot(
-        0, this, [=]() { showWarningBar("<center><b><big>" + tr("Root Instance") + "</big></b></center>", 10, true); });
+    QTimer::singleShot(0, this, [this]() {
+        showWarningBar("<center><b><big>" + tr("Root Instance") + "</big></b></center>", 10, true);
+    });
 }
 /*************************/
 void TexxyWindow::closeWarningBar(bool keepOnStartup) {
@@ -855,7 +886,9 @@ void TexxyWindow::closeWarningBar(bool keepOnStartup) {
 }
 /*************************/
 void TexxyWindow::changeEvent(QEvent* event) {
-    Config& config = static_cast<TexxyApplication*>(qApp)->getConfig();
+    auto* app = static_cast<TexxyApplication*>(qApp);
+    Config& config = app->getConfig();
+
     if (event->type() == QEvent::WindowStateChange) {
         if (config.getRemSize()) {
             if (windowState() == Qt::WindowFullScreen) {
@@ -879,7 +912,7 @@ void TexxyWindow::changeEvent(QEvent* event) {
             if (auto* stateEvent = static_cast<QWindowStateChangeEvent*>(event)) {
                 if (!(stateEvent->oldState() & Qt::WindowMaximized) &&
                     !(stateEvent->oldState() & Qt::WindowFullScreen)) {
-                    if (config.getRemPos() && !static_cast<TexxyApplication*>(qApp)->isWayland())
+                    if (config.getRemPos() && !app->isWayland())
                         config.setWinPos(geometry().topLeft());
                     if (config.getRemSize())
                         config.setWinSize(size());
@@ -912,24 +945,23 @@ void TexxyWindow::showEvent(QShowEvent* event) {
 bool TexxyWindow::event(QEvent* event) {
     if (event->type() == QEvent::ActivationChange && isActiveWindow()) {
         if (auto* tabPage = qobject_cast<TabPage*>(ui->tabWidget->currentWidget())) {
-            const QPointer<TextEdit> textEditPtr = tabPage->textEdit();
-            TextEdit* textEdit = textEditPtr.data();
-            if (!textEdit)
-                return QMainWindow::event(event);
-            const QString fname = textEdit->getFileName();
-            if (!fname.isEmpty()) {
-                if (!QFile::exists(fname)) {
-                    if (isLoading())
-                        connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningNonexistent,
-                                Qt::UniqueConnection);
-                    else
-                        onOpeningNonexistent();
-                }
-                else if (textEdit->getLastModified() != QFileInfo(fname).lastModified()) {
-                    showWarningBar("<center><b><big>" + tr("This file has been modified elsewhere or in another way!") +
-                                       "</big></b></center>\n" + "<center>" +
-                                       tr("Please be careful about reloading or saving this document!") + "</center>",
-                                   15);
+            if (auto* textEdit = tabPage->textEdit().data()) {
+                const QString fname = textEdit->getFileName();
+                if (!fname.isEmpty()) {
+                    if (!QFile::exists(fname)) {
+                        if (isLoading())
+                            connect(this, &TexxyWindow::finishedLoading, this, &TexxyWindow::onOpeningNonexistent,
+                                    Qt::UniqueConnection);
+                        else
+                            onOpeningNonexistent();
+                    }
+                    else if (textEdit->getLastModified() != QFileInfo(fname).lastModified()) {
+                        showWarningBar(
+                            "<center><b><big>" + tr("This file has been modified elsewhere or in another way!") +
+                                "</big></b></center>\n" + "<center>" +
+                                tr("Please be careful about reloading or saving this document!") + "</center>",
+                            15);
+                    }
                 }
             }
         }
@@ -955,20 +987,25 @@ void TexxyWindow::aboutDialog() {
 
     if (hasAnotherDialog())
         return;
+
     updateShortcuts(true);
 
-    class AboutDialog : public QDialog {
+    class AboutDialog final : public QDialog {
        public:
         explicit AboutDialog(QWidget* parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags()) : QDialog(parent, f) {
             aboutUi.setupUi(this);
             aboutUi.textLabel->setOpenExternalLinks(true);
         }
+
         void setTabTexts(const QString& first, const QString& sec) {
             aboutUi.tabWidget->setTabText(0, first);
             aboutUi.tabWidget->setTabText(1, sec);
         }
+
         void setMainIcon(const QIcon& icn) { aboutUi.iconLabel->setPixmap(icn.pixmap(64, 64)); }
-        void settMainTitle(const QString& title) { aboutUi.titleLabel->setText(title); }
+
+        void setMainTitle(const QString& title) { aboutUi.titleLabel->setText(title); }
+
         void setMainText(const QString& txt) { aboutUi.textLabel->setText(txt); }
 
        private:
@@ -977,15 +1014,16 @@ void TexxyWindow::aboutDialog() {
 
     AboutDialog dialog(this);
     dialog.setMainIcon(QIcon::fromTheme("texxy", QIcon(":icons/texxy.svg")));
-    dialog.settMainTitle(QString(u"<center><b><big>%1 %2</big></b></center><br>")
-                             .arg(qApp->applicationName(), qApp->applicationVersion()));
+    dialog.setMainTitle(QString(u"<center><b><big>%1 %2</big></b></center><br>")
+                            .arg(qApp->applicationName(), qApp->applicationVersion()));
     dialog.setMainText(u"<center> " + tr("A lightweight, tabbed, plain-text editor") + u" </center>\n<center> " +
                        tr("based on Qt") + u" </center><br><center> " + tr("Author") +
                        u": <a href='mailto:share@1g4.org?Subject=My%20Subject'>jopamo</a> </center><p></p>");
-    dialog.setTabTexts(tr("About Texxy"), tr("Whatever"));
+    dialog.setTabTexts(tr("About Texxy"), tr("License"));
     dialog.setWindowTitle(tr("About Texxy"));
     dialog.setWindowModality(Qt::WindowModal);
     dialog.exec();
+
     updateShortcuts(false);
 }
 }  // namespace Texxy
